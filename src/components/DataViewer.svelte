@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { untrack } from "svelte";
     import { appState } from "$lib/state.svelte";
     import { getTableData, type QueryResult } from "$lib/db";
 
@@ -15,17 +16,8 @@
     $effect(() => {
         if (appState.currentTable) {
             currentPage = 1; // Reset to first page on table change
-            loadData();
+            untrack(() => loadData());
         }
-    });
-
-    // Reload when page changes
-    $effect(() => {
-        // We need to track dependencies.
-        // If we just call loadData(), it might be called twice when table changes (once for table change, once for page reset).
-        // But since we reset page to 1 on table change, we should be careful.
-        // Actually, let's just make loadData depend on currentPage and appState.currentTable.
-        // But we want to reset page when table changes.
     });
 
     function handlePageChange(newPage: number) {
