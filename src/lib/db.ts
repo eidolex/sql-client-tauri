@@ -4,8 +4,23 @@ export interface DatabaseError {
     message: string;
 }
 
-export async function connectDb(connectionString: string): Promise<string> {
-    return await invoke("connect_db", { connectionString });
+export interface SavedConnection {
+    id: string;
+    name: string;
+    host: string;
+    port: number;
+    username: string;
+    password?: string;
+    database: string;
+    ssh_enabled: boolean;
+    ssh_host?: string;
+    ssh_port?: number;
+    ssh_user?: string;
+    ssh_key_path?: string;
+}
+
+export async function connectDb(connectionConfig: SavedConnection): Promise<string> {
+    return await invoke("connect_db", { connectionConfig });
 }
 
 export async function listDatabases(): Promise<string[]> {
@@ -19,10 +34,11 @@ export async function listTables(): Promise<string[]> {
 export interface QueryResult {
     columns: string[];
     rows: any[][];
+    total_rows?: number;
 }
 
-export async function getTableData(tableName: string): Promise<QueryResult> {
-    return await invoke("get_table_data", { tableName });
+export async function getTableData(tableName: string, limit: number, offset: number): Promise<QueryResult> {
+    return await invoke("get_table_data", { tableName, limit, offset });
 }
 
 export async function getTableStructure(tableName: string): Promise<any[]> {
@@ -35,4 +51,16 @@ export async function executeQuery(query: string): Promise<QueryResult> {
 
 export async function getDatabaseSchema(): Promise<Record<string, string[]>> {
     return await invoke("get_database_schema");
+}
+
+export async function saveConnection(connection: SavedConnection): Promise<void> {
+    return await invoke("save_connection", { connection });
+}
+
+export async function loadConnections(): Promise<SavedConnection[]> {
+    return await invoke("load_connections");
+}
+
+export async function deleteConnection(id: string): Promise<void> {
+    return await invoke("delete_connection", { id });
 }

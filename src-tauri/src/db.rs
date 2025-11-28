@@ -1,3 +1,4 @@
+use crate::connection_manager::{ConnectionManager, SavedConnection};
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{Column, Pool, Postgres, Row, TypeInfo};
 use std::sync::Mutex;
@@ -5,6 +6,7 @@ use tauri::State;
 
 pub struct AppState {
     pub pool: Mutex<Option<Pool<Postgres>>>,
+    pub connection_manager: ConnectionManager,
 }
 
 #[derive(serde::Serialize)]
@@ -22,9 +24,49 @@ impl From<sqlx::Error> for DatabaseError {
 
 #[tauri::command]
 pub async fn connect_db(
-    connection_string: String,
+    connection_config: SavedConnection,
     state: State<'_, AppState>,
 ) -> Result<String, DatabaseError> {
+    // 1. Handle SSH Tunnel if enabled
+    let mut db_host = connection_config.host.clone();
+    let mut db_port = connection_config.port;
+
+    if connection_config.ssh_enabled {
+        if let Some(ssh_host) = &connection_config.ssh_host {
+            let ssh_port = connection_config.ssh_port;
+            let ssh_user = connection_config.ssh_user.as_deref();
+            let local_port = 5433; // Fixed local port for now, could be dynamic
+
+            state
+                .connection_manager
+                .start_ssh_tunnel(
+                    ssh_host,
+                    ssh_port,
+                    ssh_user,
+                    connection_config.ssh_key_path.as_deref(),
+                    &db_host,
+                    db_port,
+                    local_port,
+                )
+                .map_err(|e| DatabaseError { message: e })?;
+
+            // Update connection info to point to local tunnel
+            db_host = "127.0.0.1".to_string();
+            db_port = local_port;
+        }
+    } else {
+        // Ensure any previous tunnel is stopped if we are connecting directly now
+        let _ = state.connection_manager.stop_ssh_tunnel();
+    }
+
+    // 2. Construct Connection String
+    let password = connection_config.password.as_deref().unwrap_or("");
+    let connection_string = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        connection_config.username, password, db_host, db_port, connection_config.database
+    );
+
+    // 3. Connect to Database
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&connection_string)
@@ -78,6 +120,7 @@ pub async fn list_tables(state: State<'_, AppState>) -> Result<Vec<String>, Data
 pub struct QueryResult {
     columns: Vec<String>,
     rows: Vec<Vec<serde_json::Value>>,
+    total_rows: Option<i64>,
 }
 
 fn row_to_values(row: PgRow) -> Vec<serde_json::Value> {
@@ -208,6 +251,8 @@ fn row_to_json(row: PgRow) -> serde_json::Value {
 #[tauri::command]
 pub async fn get_table_data(
     table_name: String,
+    limit: i64,
+    offset: i64,
     state: State<'_, AppState>,
 ) -> Result<QueryResult, DatabaseError> {
     let pool = {
@@ -218,9 +263,19 @@ pub async fn get_table_data(
     };
 
     // WARNING: SQL Injection risk. Validate table_name in production.
-    let query = format!("SELECT * FROM \"{}\" LIMIT 100", table_name);
+    // Get total count
+    let count_query = format!("SELECT COUNT(*) FROM \"{}\"", table_name);
+    let count_row: (i64,) = sqlx::query_as(&count_query).fetch_one(&pool).await?;
+    let total_rows = count_row.0;
 
-    let rows = sqlx::query(&query).fetch_all(&pool).await?;
+    // Get data with pagination
+    let query = format!("SELECT * FROM \"{}\" LIMIT $1 OFFSET $2", table_name);
+
+    let rows = sqlx::query(&query)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&pool)
+        .await?;
 
     let columns = if let Some(first_row) = rows.first() {
         first_row
@@ -229,6 +284,9 @@ pub async fn get_table_data(
             .map(|col| col.name().to_string())
             .collect()
     } else {
+        // If no rows, we might want to get columns from structure, but for now empty is fine
+        // or we could keep previous columns if we had them.
+        // For now, let's just return empty columns if no data.
         Vec::new()
     };
 
@@ -237,6 +295,7 @@ pub async fn get_table_data(
     Ok(QueryResult {
         columns,
         rows: result_rows,
+        total_rows: Some(total_rows),
     })
 }
 
@@ -300,6 +359,7 @@ pub async fn execute_query(
     Ok(QueryResult {
         columns,
         rows: result_rows,
+        total_rows: None,
     })
 }
 
