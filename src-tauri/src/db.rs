@@ -232,6 +232,18 @@ fn row_to_values(row: PgRow) -> Vec<serde_json::Value> {
                 let val: Option<serde_json::Value> = row.try_get(col_name).unwrap_or(None);
                 serde_json::json!(val)
             }
+            "INET" | "inet" | "CIDR" | "cidr" => {
+                let val: Option<ipnetwork::IpNetwork> = row.try_get(col_name).unwrap_or(None);
+                serde_json::json!(val)
+            }
+            "DATE" | "Date" => {
+                let val: Option<chrono::NaiveDate> = row.try_get(col_name).unwrap_or(None);
+                serde_json::json!(val)
+            }
+            "TIME" | "Time" => {
+                let val: Option<chrono::NaiveTime> = row.try_get(col_name).unwrap_or(None);
+                serde_json::json!(val)
+            }
             _ => {
                 // Try to get as String for anything else
                 if let Ok(val) = row.try_get::<String, _>(col_name) {
@@ -293,6 +305,18 @@ fn row_to_json(row: PgRow) -> serde_json::Value {
             }
             "JSON" | "JSONB" => {
                 let val: Option<serde_json::Value> = row.try_get(col_name).unwrap_or(None);
+                serde_json::json!(val)
+            }
+            "INET" | "inet" | "CIDR" | "cidr" => {
+                let val: Option<ipnetwork::IpNetwork> = row.try_get(col_name).unwrap_or(None);
+                serde_json::json!(val)
+            }
+            "DATE" | "Date" => {
+                let val: Option<chrono::NaiveDate> = row.try_get(col_name).unwrap_or(None);
+                serde_json::json!(val)
+            }
+            "TIME" | "Time" => {
+                let val: Option<chrono::NaiveTime> = row.try_get(col_name).unwrap_or(None);
                 serde_json::json!(val)
             }
             _ => {

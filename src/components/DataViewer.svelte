@@ -57,6 +57,16 @@
             loading = false;
         }
     }
+
+    function formatCell(value: any): string {
+        if (value === null || value === undefined) {
+            return "";
+        }
+        if (typeof value === "object") {
+            return JSON.stringify(value);
+        }
+        return String(value);
+    }
 </script>
 
 <div class="h-full flex flex-col">
@@ -124,8 +134,8 @@
                                     {#each row as cell}
                                         <td
                                             class="px-4 py-2 max-w-xs truncate"
-                                            title={String(cell)}
-                                            >{String(cell)}</td
+                                            title={formatCell(cell)}
+                                            >{formatCell(cell)}</td
                                         >
                                     {/each}
                                 </tr>
