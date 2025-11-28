@@ -2,7 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { EditorView, basicSetup } from "codemirror";
     import { sql } from "@codemirror/lang-sql";
-    import { executeQuery, type QueryResult } from "$lib/db";
+    import { getDatabaseSchema, executeQuery, type QueryResult } from "$lib/db";
     import { appState } from "$lib/state.svelte";
 
     let element: HTMLElement;
@@ -12,12 +12,21 @@
     let error = $state("");
     let loading = $state(false);
 
-    onMount(() => {
+    onMount(async () => {
+        let schema = {};
+        try {
+            if (appState.isConnected) {
+                schema = await getDatabaseSchema();
+            }
+        } catch (e) {
+            console.error("Failed to load schema for autocomplete", e);
+        }
+
         view = new EditorView({
             doc: query,
             extensions: [
                 basicSetup,
-                sql(),
+                sql({ schema }),
                 EditorView.theme(
                     {
                         "&": { height: "100%", fontSize: "14px" },
@@ -45,8 +54,17 @@
         loading = true;
         error = "";
         result = { columns: [], rows: [] };
+
+        let queryToRun = query;
+        if (view) {
+            const selection = view.state.selection.main;
+            if (!selection.empty) {
+                queryToRun = view.state.sliceDoc(selection.from, selection.to);
+            }
+        }
+
         try {
-            result = await executeQuery(query);
+            result = await executeQuery(queryToRun);
         } catch (e: any) {
             error = e.message || "Query failed";
         } finally {

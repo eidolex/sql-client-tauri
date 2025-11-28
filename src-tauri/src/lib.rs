@@ -22,7 +22,8 @@ pub fn run() {
             db::list_tables,
             db::get_table_data,
             db::get_table_structure,
-            db::execute_query
+            db::execute_query,
+            db::get_database_schema
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

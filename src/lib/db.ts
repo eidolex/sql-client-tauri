@@ -32,3 +32,7 @@ export async function getTableStructure(tableName: string): Promise<any[]> {
 export async function executeQuery(query: string): Promise<QueryResult> {
     return await invoke("execute_query", { query });
 }
+
+export async function getDatabaseSchema(): Promise<Record<string, string[]>> {
+    return await invoke("get_database_schema");
+}

@@ -302,3 +302,36 @@ pub async fn execute_query(
         rows: result_rows,
     })
 }
+
+#[tauri::command]
+pub async fn get_database_schema(
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, Vec<String>>, DatabaseError> {
+    let pool = {
+        let pool_guard = state.pool.lock().unwrap();
+        pool_guard.as_ref().cloned().ok_or(DatabaseError {
+            message: "Not connected to database".to_string(),
+        })?
+    };
+
+    let rows = sqlx::query(
+        "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public';",
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    let mut schema: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+
+    for row in rows {
+        let table_name: String = row.get("table_name");
+        let column_name: String = row.get("column_name");
+
+        schema
+            .entry(table_name)
+            .or_insert_with(Vec::new)
+            .push(column_name);
+    }
+
+    Ok(schema)
+}
