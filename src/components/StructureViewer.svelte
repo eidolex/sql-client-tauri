@@ -1,14 +1,20 @@
 <script lang="ts">
+    import { untrack } from "svelte";
     import { appState } from "$lib/state.svelte";
     import { getTableStructure } from "$lib/db";
+
+    let { connectionId, tableName } = $props<{
+        connectionId: string;
+        tableName: string;
+    }>();
 
     let structure = $state<any[]>([]);
     let loading = $state(false);
     let error = $state("");
 
     $effect(() => {
-        if (appState.currentTable) {
-            loadStructure();
+        if (connectionId && tableName) {
+            untrack(() => loadStructure());
         }
     });
 
@@ -17,7 +23,7 @@
         error = "";
         structure = [];
         try {
-            structure = await getTableStructure(appState.currentTable);
+            structure = await getTableStructure(connectionId, tableName);
         } catch (e: any) {
             error = e.message || "Failed to load structure";
         } finally {
@@ -32,12 +38,19 @@
     >
         <h2 class="text-lg font-bold flex items-center gap-2">
             <span class="text-gray-400">Structure:</span>
-            {appState.currentTable}
+            {tableName}
         </h2>
         <div class="flex gap-2">
             <button
                 class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm"
-                onclick={() => (appState.currentView = "data")}
+                onclick={() => {
+                    const tab = appState.tabs.find(
+                        (t) => t.id === appState.activeTabId,
+                    );
+                    if (tab) {
+                        tab.type = "data";
+                    }
+                }}
             >
                 View Data
             </button>

@@ -1,11 +1,18 @@
 use crate::connection_manager::{ConnectionManager, SavedConnection};
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{Column, Pool, Postgres, Row, TypeInfo};
+use std::collections::HashMap;
+use std::process::Child;
 use std::sync::Mutex;
 use tauri::State;
 
+pub struct DbConnection {
+    pub pool: Pool<Postgres>,
+    pub ssh_process: Option<Child>,
+}
+
 pub struct AppState {
-    pub pool: Mutex<Option<Pool<Postgres>>>,
+    pub connections: Mutex<HashMap<String, DbConnection>>,
     pub connection_manager: ConnectionManager,
 }
 
@@ -22,6 +29,18 @@ impl From<sqlx::Error> for DatabaseError {
     }
 }
 
+// Helper to get pool
+fn get_pool(
+    state: &State<'_, AppState>,
+    connection_id: &str,
+) -> Result<Pool<Postgres>, DatabaseError> {
+    let connections = state.connections.lock().unwrap();
+    let conn = connections.get(connection_id).ok_or(DatabaseError {
+        message: "Connection not found".to_string(),
+    })?;
+    Ok(conn.pool.clone())
+}
+
 #[tauri::command]
 pub async fn connect_db(
     connection_config: SavedConnection,
@@ -30,14 +49,20 @@ pub async fn connect_db(
     // 1. Handle SSH Tunnel if enabled
     let mut db_host = connection_config.host.clone();
     let mut db_port = connection_config.port;
+    let mut ssh_child = None;
 
     if connection_config.ssh_enabled {
         if let Some(ssh_host) = &connection_config.ssh_host {
             let ssh_port = connection_config.ssh_port;
             let ssh_user = connection_config.ssh_user.as_deref();
-            let local_port = 5433; // Fixed local port for now, could be dynamic
+            // Simple random port generation
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos();
+            let local_port = 5433 + (nanos % 1000) as u16;
 
-            state
+            let child = state
                 .connection_manager
                 .start_ssh_tunnel(
                     ssh_host,
@@ -50,13 +75,12 @@ pub async fn connect_db(
                 )
                 .map_err(|e| DatabaseError { message: e })?;
 
+            ssh_child = Some(child);
+
             // Update connection info to point to local tunnel
             db_host = "127.0.0.1".to_string();
             db_port = local_port;
         }
-    } else {
-        // Ensure any previous tunnel is stopped if we are connecting directly now
-        let _ = state.connection_manager.stop_ssh_tunnel();
     }
 
     // 2. Construct Connection String
@@ -67,24 +91,62 @@ pub async fn connect_db(
     );
 
     // 3. Connect to Database
-    let pool = PgPoolOptions::new()
+    let pool_result = PgPoolOptions::new()
         .max_connections(5)
         .connect(&connection_string)
-        .await?;
+        .await;
 
-    *state.pool.lock().unwrap() = Some(pool);
+    let pool = match pool_result {
+        Ok(pool) => pool,
+        Err(e) => {
+            // Clean up SSH process if connection fails
+            if let Some(mut child) = ssh_child {
+                let _ = child.kill();
+            }
+            return Err(DatabaseError::from(e));
+        }
+    };
 
-    Ok("Connected successfully".to_string())
+    let connection_id = uuid::Uuid::new_v4().to_string();
+    let connection = DbConnection {
+        pool,
+        ssh_process: ssh_child,
+    };
+
+    state
+        .connections
+        .lock()
+        .unwrap()
+        .insert(connection_id.clone(), connection);
+
+    Ok(connection_id)
 }
 
 #[tauri::command]
-pub async fn list_databases(state: State<'_, AppState>) -> Result<Vec<String>, DatabaseError> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.as_ref().cloned().ok_or(DatabaseError {
-            message: "Not connected to database".to_string(),
-        })?
+pub async fn disconnect_db(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), DatabaseError> {
+    let conn = {
+        let mut connections = state.connections.lock().unwrap();
+        connections.remove(&connection_id)
     };
+
+    if let Some(conn) = conn {
+        conn.pool.close().await;
+        if let Some(mut child) = conn.ssh_process {
+            let _ = child.kill();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_databases(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, DatabaseError> {
+    let pool = get_pool(&state, &connection_id)?;
 
     let rows = sqlx::query("SELECT datname FROM pg_database WHERE datistemplate = false;")
         .fetch_all(&pool)
@@ -95,13 +157,11 @@ pub async fn list_databases(state: State<'_, AppState>) -> Result<Vec<String>, D
 }
 
 #[tauri::command]
-pub async fn list_tables(state: State<'_, AppState>) -> Result<Vec<String>, DatabaseError> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.as_ref().cloned().ok_or(DatabaseError {
-            message: "Not connected to database".to_string(),
-        })?
-    };
+pub async fn list_tables(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, DatabaseError> {
+    let pool = get_pool(&state, &connection_id)?;
 
     let rows = sqlx::query(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';",
@@ -250,17 +310,13 @@ fn row_to_json(row: PgRow) -> serde_json::Value {
 
 #[tauri::command]
 pub async fn get_table_data(
+    connection_id: String,
     table_name: String,
     limit: i64,
     offset: i64,
     state: State<'_, AppState>,
 ) -> Result<QueryResult, DatabaseError> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.as_ref().cloned().ok_or(DatabaseError {
-            message: "Not connected to database".to_string(),
-        })?
-    };
+    let pool = get_pool(&state, &connection_id)?;
 
     // WARNING: SQL Injection risk. Validate table_name in production.
     // Get total count
@@ -301,15 +357,11 @@ pub async fn get_table_data(
 
 #[tauri::command]
 pub async fn get_table_structure(
+    connection_id: String,
     table_name: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<serde_json::Value>, DatabaseError> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.as_ref().cloned().ok_or(DatabaseError {
-            message: "Not connected to database".to_string(),
-        })?
-    };
+    let pool = get_pool(&state, &connection_id)?;
 
     let rows = sqlx::query(
         "SELECT column_name, data_type, is_nullable 
@@ -327,15 +379,11 @@ pub async fn get_table_structure(
 
 #[tauri::command]
 pub async fn execute_query(
+    connection_id: String,
     query: String,
     state: State<'_, AppState>,
 ) -> Result<QueryResult, DatabaseError> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.as_ref().cloned().ok_or(DatabaseError {
-            message: "Not connected to database".to_string(),
-        })?
-    };
+    let pool = get_pool(&state, &connection_id)?;
 
     // This is for SELECT queries. For others, we might need execute().
     // Assuming the user wants to see results.
@@ -365,14 +413,10 @@ pub async fn execute_query(
 
 #[tauri::command]
 pub async fn get_database_schema(
+    connection_id: String,
     state: State<'_, AppState>,
 ) -> Result<std::collections::HashMap<String, Vec<String>>, DatabaseError> {
-    let pool = {
-        let pool_guard = state.pool.lock().unwrap();
-        pool_guard.as_ref().cloned().ok_or(DatabaseError {
-            message: "Not connected to database".to_string(),
-        })?
-    };
+    let pool = get_pool(&state, &connection_id)?;
 
     let rows = sqlx::query(
         "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public';",

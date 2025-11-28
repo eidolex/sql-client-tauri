@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command};
-use std::sync::Mutex;
 use tauri::AppHandle;
 use tauri::Manager;
 
@@ -22,15 +21,11 @@ pub struct SavedConnection {
     pub ssh_key_path: Option<String>,
 }
 
-pub struct ConnectionManager {
-    pub ssh_process: Mutex<Option<Child>>,
-}
+pub struct ConnectionManager;
 
 impl ConnectionManager {
     pub fn new() -> Self {
-        Self {
-            ssh_process: Mutex::new(None),
-        }
+        Self
     }
 
     pub fn start_ssh_tunnel(
@@ -42,7 +37,7 @@ impl ConnectionManager {
         remote_host: &str,
         remote_port: u16,
         local_port: u16,
-    ) -> Result<(), String> {
+    ) -> Result<Child, String> {
         let mut command = Command::new("ssh");
 
         // Basic SSH flags
@@ -84,29 +79,10 @@ impl ConnectionManager {
             .spawn()
             .map_err(|e| format!("Failed to start SSH tunnel: {}", e))?;
 
-        let mut process_guard = self.ssh_process.lock().map_err(|e| e.to_string())?;
-
-        // Kill existing process if any
-        if let Some(mut old_child) = process_guard.take() {
-            let _ = old_child.kill();
-        }
-
-        *process_guard = Some(child);
-
         // Give it a moment to establish
         std::thread::sleep(std::time::Duration::from_millis(1000));
 
-        Ok(())
-    }
-
-    pub fn stop_ssh_tunnel(&self) -> Result<(), String> {
-        let mut process_guard = self.ssh_process.lock().map_err(|e| e.to_string())?;
-        if let Some(mut child) = process_guard.take() {
-            child
-                .kill()
-                .map_err(|e| format!("Failed to kill SSH process: {}", e))?;
-        }
-        Ok(())
+        Ok(child)
     }
 }
 

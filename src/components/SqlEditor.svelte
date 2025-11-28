@@ -5,9 +5,16 @@
     import { getDatabaseSchema, executeQuery, type QueryResult } from "$lib/db";
     import { appState } from "$lib/state.svelte";
 
+    let { connectionId, initialQuery } = $props<{
+        connectionId: string;
+        initialQuery?: string;
+    }>();
+
     let element: HTMLElement;
     let view: EditorView;
-    let query = $state("SELECT * FROM information_schema.tables;");
+    let query = $state(
+        initialQuery || "SELECT * FROM information_schema.tables;",
+    );
     let result = $state<QueryResult>({ columns: [], rows: [] });
     let error = $state("");
     let loading = $state(false);
@@ -15,9 +22,7 @@
     onMount(async () => {
         let schema = {};
         try {
-            if (appState.isConnected) {
-                schema = await getDatabaseSchema();
-            }
+            schema = await getDatabaseSchema(connectionId);
         } catch (e) {
             console.error("Failed to load schema for autocomplete", e);
         }
@@ -41,6 +46,12 @@
                 view.update([tr]);
                 if (tr.docChanged) {
                     query = view.state.doc.toString();
+                    const tab = appState.tabs.find(
+                        (t) => t.id === appState.activeTabId,
+                    );
+                    if (tab && tab.type === "query") {
+                        tab.query = query;
+                    }
                 }
             },
         });
@@ -64,7 +75,7 @@
         }
 
         try {
-            result = await executeQuery(queryToRun);
+            result = await executeQuery(connectionId, queryToRun);
         } catch (e: any) {
             error = e.message || "Query failed";
         } finally {

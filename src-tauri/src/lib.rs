@@ -15,12 +15,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            pool: std::sync::Mutex::new(None),
+            connections: std::sync::Mutex::new(std::collections::HashMap::new()),
             connection_manager: ConnectionManager::new(),
         })
         .invoke_handler(tauri::generate_handler![
             greet,
             db::connect_db,
+            db::disconnect_db,
             db::list_databases,
             db::list_tables,
             db::get_table_data,

@@ -4,6 +4,8 @@
     saveConnection,
     loadConnections,
     deleteConnection,
+    listDatabases,
+    listTables,
     type SavedConnection,
   } from "$lib/db";
   import { appState } from "$lib/state.svelte";
@@ -96,8 +98,19 @@
     loading = true;
     error = "";
     try {
-      await connectDb(currentConnection);
-      appState.isConnected = true;
+      const connectionId = await connectDb(currentConnection);
+
+      // Fetch initial metadata
+      const databases = await listDatabases(connectionId);
+      const tables = await listTables(connectionId);
+
+      appState.addConnection({
+        id: connectionId,
+        config: { ...currentConnection },
+        databases,
+        tables,
+        currentDatabase: currentConnection.database,
+      });
     } catch (e: any) {
       error = e.message || "Failed to connect";
     } finally {

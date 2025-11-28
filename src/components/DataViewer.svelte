@@ -1,43 +1,56 @@
 <script lang="ts">
     import { untrack } from "svelte";
-    import { appState } from "$lib/state.svelte";
+    import { appState, type Tab } from "$lib/state.svelte";
     import { getTableData, type QueryResult } from "$lib/db";
 
-    let result = $state<QueryResult>({ columns: [], rows: [], total_rows: 0 });
+    let { tab } = $props<{ tab: Tab }>();
+
     let loading = $state(false);
     let error = $state("");
-    let currentPage = $state(1);
-    let pageSize = $state(50);
+
+    // Initialize defaults if missing
+    if (!tab.page) tab.page = 1;
+    if (!tab.pageSize) tab.pageSize = 50;
+    if (!tab.data) tab.data = [];
+    if (!tab.columns) tab.columns = [];
+    if (tab.totalRows === undefined) tab.totalRows = 0;
 
     let totalPages = $derived(
-        Math.ceil((result.total_rows || 0) / pageSize) || 1,
+        Math.ceil((tab.totalRows || 0) / (tab.pageSize || 50)) || 1,
     );
 
     $effect(() => {
-        if (appState.currentTable) {
-            currentPage = 1; // Reset to first page on table change
+        // Load data if empty or if explicit refresh needed (we can add a timestamp later if needed)
+        // For now, just load if empty.
+        if (tab.data && tab.data.length === 0 && !loading && !error) {
             untrack(() => loadData());
         }
     });
 
     function handlePageChange(newPage: number) {
         if (newPage >= 1 && newPage <= totalPages) {
-            currentPage = newPage;
+            tab.page = newPage;
             loadData();
         }
     }
 
     async function loadData() {
+        if (!tab.table) return;
+
         loading = true;
         error = "";
-        result = { columns: [], rows: [] };
         try {
-            const offset = (currentPage - 1) * pageSize;
-            result = await getTableData(
-                appState.currentTable,
-                pageSize,
+            const offset = ((tab.page || 1) - 1) * (tab.pageSize || 50);
+            const result = await getTableData(
+                tab.connectionId,
+                tab.table,
+                tab.pageSize || 50,
                 offset,
             );
+
+            tab.data = result.rows;
+            tab.columns = result.columns;
+            tab.totalRows = result.total_rows || 0;
         } catch (e: any) {
             error = e.message || "Failed to load data";
         } finally {
@@ -52,7 +65,7 @@
     >
         <h2 class="text-lg font-bold flex items-center gap-2">
             <span class="text-gray-400">Table:</span>
-            {appState.currentTable}
+            {tab.table}
         </h2>
         <div class="flex gap-2">
             <button
@@ -63,7 +76,9 @@
             </button>
             <button
                 class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm"
-                onclick={() => (appState.currentView = "structure")}
+                onclick={() => {
+                    tab.type = "structure";
+                }}
             >
                 Structure
             </button>
@@ -84,7 +99,7 @@
                 >
                     Error: {error}
                 </div>
-            {:else if result.rows.length === 0}
+            {:else if !tab.data || tab.data.length === 0}
                 <div
                     class="flex items-center justify-center h-full text-gray-500"
                 >
@@ -95,7 +110,7 @@
                     <table class="w-full text-left text-sm whitespace-nowrap">
                         <thead class="bg-gray-900 text-gray-400 font-medium">
                             <tr>
-                                {#each result.columns as header}
+                                {#each tab.columns || [] as header}
                                     <th
                                         class="px-4 py-2 border-b border-gray-800"
                                         >{header}</th
@@ -104,7 +119,7 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-800">
-                            {#each result.rows as row}
+                            {#each tab.data || [] as row}
                                 <tr class="hover:bg-gray-900/50">
                                     {#each row as cell}
                                         <td
@@ -122,29 +137,30 @@
         </div>
 
         <!-- Pagination Controls -->
-        {#if !loading && !error && result.rows.length > 0}
+        {#if !loading && !error && (tab.data?.length || 0) > 0}
             <div
                 class="flex justify-between items-center pt-4 border-t border-gray-800 mt-4 text-sm text-gray-400"
             >
                 <div>
-                    Showing {(currentPage - 1) * pageSize + 1} to {Math.min(
-                        currentPage * pageSize,
-                        result.total_rows || 0,
-                    )} of {result.total_rows} rows
+                    Showing {((tab.page || 1) - 1) * (tab.pageSize || 50) + 1} to
+                    {Math.min(
+                        (tab.page || 1) * (tab.pageSize || 50),
+                        tab.totalRows || 0,
+                    )} of {tab.totalRows} rows
                 </div>
                 <div class="flex gap-2 items-center">
                     <button
                         class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={currentPage === 1}
-                        onclick={() => handlePageChange(currentPage - 1)}
+                        disabled={tab.page === 1}
+                        onclick={() => handlePageChange((tab.page || 1) - 1)}
                     >
                         Previous
                     </button>
-                    <span>Page {currentPage} of {totalPages}</span>
+                    <span>Page {tab.page} of {totalPages}</span>
                     <button
                         class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={currentPage === totalPages}
-                        onclick={() => handlePageChange(currentPage + 1)}
+                        disabled={tab.page === totalPages}
+                        onclick={() => handlePageChange((tab.page || 1) + 1)}
                     >
                         Next
                     </button>
