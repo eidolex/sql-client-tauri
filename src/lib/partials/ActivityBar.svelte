@@ -7,8 +7,7 @@
   import { cn } from "$lib/utils";
   import { setMode } from "mode-watcher";
   import SpaceList from "./SpaceList.svelte";
-
-  const appState = getAppState();
+  import { page } from "$app/state";
 </script>
 
 <div
@@ -16,13 +15,13 @@
 >
   <!-- New Connection / Home -->
   <Button
-    variant={!appState.selectedConnectionId ? "default" : "ghost"}
+    variant={page.route.id === "/(space)/new" ? "default" : "ghost"}
     size="icon"
     class={cn(
       "w-12 h-12 rounded-xl transition-all duration-200",
-      !appState.selectedConnectionId
+      page.route.id === "/(space)/new"
         ? "bg-primary text-primary-foreground hover:bg-primary/90"
-        : "hover:bg-muted"
+        : "hover:bg-muted",
     )}
     href="/new"
     title="New Connection"
