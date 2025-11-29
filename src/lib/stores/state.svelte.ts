@@ -1,5 +1,5 @@
 import { getContext, setContext } from "svelte";
-import type { SavedConnection } from "./db";
+import type { SavedConnection } from "../db";
 
 export interface ActiveConnection {
   id: string; // The runtime connection ID returned by backend

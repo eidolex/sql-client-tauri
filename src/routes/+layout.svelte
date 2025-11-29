@@ -1,7 +1,7 @@
 <script>
   import "../app.css";
   import { ModeWatcher } from "mode-watcher";
-  import { setAppState } from "$lib/state.svelte";
+  import { setAppState } from "$lib/stores/state.svelte";
 
   let { children } = $props();
 

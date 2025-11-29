@@ -17,7 +17,7 @@
   import * as Table from "$lib/components/ui/table";
   import { Badge } from "$lib/components/ui/badge";
   import { Card } from "$lib/components/ui/card";
-  import { getAppState, type Tab } from "$lib/state.svelte";
+  import { getAppState, type Tab } from "$lib/stores/state.svelte";
 
   let { tab } = $props<{ tab: Tab }>();
 

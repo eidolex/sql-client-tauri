@@ -10,7 +10,7 @@
   import * as Table from "$lib/components/ui/table";
   import { Badge } from "$lib/components/ui/badge";
   import { Loader2, Table as TableIcon } from "lucide-svelte";
-  import { getAppState } from "$lib/state.svelte";
+  import { getAppState } from "$lib/stores/state.svelte";
 
   const appState = getAppState();
 

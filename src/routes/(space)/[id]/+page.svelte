@@ -1,6 +1,6 @@
 <script lang="ts">
   import TableList from "$lib/partials/space/TableList.svelte";
-  import { getAppState } from "$lib/state.svelte";
+  import { getAppState } from "$lib/stores/state.svelte";
   import { cn } from "$lib/utils";
   import { Database, TableProperties, Terminal, X } from "lucide-svelte";
   import type { PageProps } from "./$types";

@@ -7,7 +7,7 @@
   import * as Resizable from "$lib/components/ui/resizable";
   import * as Table from "$lib/components/ui/table";
   import { Play, LoaderCircle } from "lucide-svelte";
-  import { getAppState } from "$lib/state.svelte";
+  import { getAppState } from "$lib/stores/state.svelte";
 
   const appState = getAppState();
 

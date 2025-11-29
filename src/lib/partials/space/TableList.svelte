@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getAppState, type ActiveConnection } from "$lib/state.svelte";
+  import { getAppState, type ActiveConnection } from "$lib/stores/state.svelte";
   import { connectDb, disconnectDb, listTables } from "$lib/db";
   import {
     Database,

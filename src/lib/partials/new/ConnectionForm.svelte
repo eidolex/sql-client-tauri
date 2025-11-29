@@ -16,7 +16,7 @@
     listTables,
     type SavedConnection,
   } from "$lib/db";
-  import { getAppState } from "$lib/state.svelte";
+  import { getAppState } from "$lib/stores/state.svelte";
   import { getConnectionState } from "$lib/stores/connection.state.svelte";
   import { Database, Plug, Save } from "lucide-svelte";
   import { cn } from "tailwind-variants";

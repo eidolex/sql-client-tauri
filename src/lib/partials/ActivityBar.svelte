@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getAppState } from "$lib/state.svelte";
+  import { getAppState } from "$lib/stores/state.svelte";
   import { Plus, Sun, Moon } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
   import { Separator } from "$lib/components/ui/separator";

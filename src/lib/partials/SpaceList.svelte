@@ -2,7 +2,7 @@
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { Button } from "$lib/components/ui/button";
-  import { getAppState } from "$lib/state.svelte";
+  import { getAppState } from "$lib/stores/state.svelte";
   import { LogOut } from "lucide-svelte";
   import { cn } from "$lib/utils";
   import { disconnectDb } from "$lib/db";
