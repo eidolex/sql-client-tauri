@@ -10,22 +10,27 @@
   import * as Table from "$lib/components/ui/table";
   import { Badge } from "$lib/components/ui/badge";
   import { Loader2, Table as TableIcon } from "lucide-svelte";
-  import { getAppState } from "$lib/stores/state.svelte";
+  import { getAppState, type StructureTab } from "$lib/stores/state.svelte";
 
   const appState = getAppState();
 
-  let { connectionId, tableName } = $props<{
-    connectionId: string;
-    tableName: string;
+  let { spaceId, tabId } = $props<{
+    spaceId: string;
+    tabId: string;
   }>();
 
-  let structure = $state<ColumnDefinition[]>([]);
   let indexes = $state<IndexDefinition[]>([]);
   let loading = $state(false);
   let error = $state("");
 
+  let tab = $derived(
+    appState.tabs
+      .get(spaceId)!
+      .find((t) => t.type === "structure" && t.id === tabId)! as StructureTab
+  );
+
   $effect(() => {
-    if (connectionId && tableName) {
+    if (spaceId && tab) {
       untrack(() => loadStructure());
     }
   });
@@ -33,15 +38,22 @@
   async function loadStructure() {
     loading = true;
     error = "";
-    structure = [];
     indexes = [];
     try {
-      const [struct, idxs] = await Promise.all([
-        getTableStructure(connectionId, tableName),
-        getTableIndexes(connectionId, tableName),
-      ]);
-      structure = struct;
-      indexes = idxs;
+      const promises: Promise<any>[] = [getTableIndexes(spaceId, tab.table)];
+
+      if (!tab.columns) {
+        promises.push(getTableStructure(spaceId, tab.table));
+      }
+
+      const responses = await Promise.all(promises);
+      indexes = responses[0];
+      if (responses[1]) {
+        appState.updateTab(spaceId, {
+          ...tab,
+          columns: responses[1],
+        });
+      }
     } catch (e: any) {
       error = e.message || "Failed to load structure";
     } finally {
@@ -54,17 +66,20 @@
   <div class="p-4 border-b flex justify-between items-center bg-muted/10">
     <h2 class="text-lg font-semibold flex items-center gap-2">
       <span class="text-muted-foreground">Structure:</span>
-      {tableName}
+      {tab.table}
     </h2>
     <div class="flex gap-2">
       <Button
         variant="outline"
         size="sm"
         onclick={() => {
-          const tab = appState.tabs.find((t) => t.id === appState.activeTabId);
-          if (tab) {
-            tab.type = "data";
-          }
+          appState.updateTab(spaceId, {
+            ...tab,
+            page: tab.page || 1,
+            pageSize: tab.pageSize || 50,
+            totalRows: tab.totalRows || 0,
+            type: "data",
+          });
         }}
       >
         <TableIcon class="mr-2 h-4 w-4" />
@@ -87,7 +102,7 @@
       >
         Error: {error}
       </div>
-    {:else if structure.length === 0}
+    {:else if tab.columns?.length === 0}
       <div
         class="flex items-center justify-center h-full text-muted-foreground"
       >
@@ -107,7 +122,7 @@
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {#each structure as col}
+            {#each tab.columns as col}
               <Table.Row>
                 <Table.Cell class="font-mono text-primary"
                   >{col.column_name}</Table.Cell

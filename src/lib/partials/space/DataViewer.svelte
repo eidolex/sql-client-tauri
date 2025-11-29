@@ -17,13 +17,11 @@
   import * as Table from "$lib/components/ui/table";
   import { Badge } from "$lib/components/ui/badge";
   import { Card } from "$lib/components/ui/card";
-  import { getAppState, type Tab } from "$lib/stores/state.svelte";
-
-  let { tab } = $props<{ tab: Tab }>();
-
-  let loading = $state(false);
-  let error = $state("");
-  let showFilters = $state(false);
+  import {
+    getAppState,
+    type DataTab,
+    type Tab,
+  } from "$lib/stores/state.svelte";
 
   interface Filter {
     field: string;
@@ -38,15 +36,23 @@
 
   const appState = getAppState();
 
+  let { spaceId, tabId } = $props<{ spaceId: string; tabId: string }>();
+
+  let loading = $state(false);
+  let error = $state("");
+  let showFilters = $state(false);
   let filters = $state<Filter[]>([]);
   let sorts = $state<Sort[]>([]);
 
+  let tab = $derived(
+    appState.tabs
+      .get(spaceId)!
+      .find((t) => t.type === "data" && t.id === tabId)! as DataTab
+  );
+
+  let columns = $derived(tab.columns?.map((c) => c.column_name) || []);
+
   // Initialize defaults if missing
-  if (!tab.page) tab.page = 1;
-  if (!tab.pageSize) tab.pageSize = 50;
-  // Don't initialize tab.data to [] here, so we can distinguish "not loaded" (undefined) from "loaded but empty" ([])
-  if (!tab.columns) tab.columns = [];
-  if (tab.totalRows === undefined) tab.totalRows = 0;
 
   let totalPages = $derived(
     Math.ceil((tab.totalRows || 0) / (tab.pageSize || 50)) || 1
@@ -68,11 +74,10 @@
     if (!tab.table) return;
     try {
       const structure = await getTableStructure(tab.connectionId, tab.table);
-      // The structure returns objects with column_name, data_type, etc.
-      // We just need the names for the headers for now.
-      // Based on get_table_structure implementation:
-      // SELECT column_name, data_type, is_nullable ...
-      tab.columns = structure.map((col: any) => col.column_name);
+      appState.updateTab(tab.connectionId, {
+        ...tab,
+        columns: structure,
+      });
     } catch (e) {
       console.error("Failed to load structure", e);
     }
@@ -102,13 +107,12 @@
       );
 
       tab.data = result.rows;
-      // Only update columns if we don't have them yet, or if the result has them
-      // But usually we trust loadStructure for the initial view.
-      // However, getTableData returns columns too. Let's ensure they match or just update.
-      if (!tab.columns || tab.columns.length === 0) {
-        tab.columns = result.columns;
-      }
       tab.totalRows = result.total_rows || 0;
+      appState.updateTab(tab.connectionId, {
+        ...tab,
+        data: result.rows,
+        totalRows: result.total_rows || 0,
+      });
     } catch (e: any) {
       error = e.message || "Failed to load data";
     } finally {
@@ -136,7 +140,7 @@
   function addFilter() {
     if (tab.columns && tab.columns.length > 0) {
       filters.push({
-        field: tab.columns[0],
+        field: tab.columns[0].column_name,
         operator: "=",
         value: "",
       });
@@ -192,6 +196,7 @@
       index: sorts.length > 1 ? index + 1 : null,
     };
   }
+  $inspect(tab);
 </script>
 
 <div class="h-full flex flex-col bg-background">
@@ -224,7 +229,10 @@
           variant="outline"
           size="sm"
           onclick={() => {
-            tab.type = "structure";
+            appState.updateTab(tab.connectionId, {
+              ...tab,
+              type: "structure",
+            });
           }}
         >
           Structure
@@ -328,7 +336,7 @@
           <Table.Root>
             <Table.Header class="sticky top-0 bg-background z-10 shadow-sm">
               <Table.Row>
-                {#each tab.columns || [] as header}
+                {#each columns || [] as header}
                   {@const sort = getSortIndicator(header)}
                   <Table.Head
                     class="cursor-pointer hover:bg-muted/50 select-none whitespace-nowrap"
@@ -356,10 +364,7 @@
             <Table.Body>
               {#if loading && (!tab.data || tab.data.length === 0)}
                 <Table.Row>
-                  <Table.Cell
-                    colspan={tab.columns.length}
-                    class="h-24 text-center"
-                  >
+                  <Table.Cell colspan={columns.length} class="h-24 text-center">
                     <div
                       class="flex justify-center items-center gap-2 text-muted-foreground"
                     >
@@ -371,7 +376,7 @@
               {:else if !tab.data || tab.data.length === 0}
                 <Table.Row>
                   <Table.Cell
-                    colspan={tab.columns.length}
+                    colspan={columns.length}
                     class="h-24 text-center text-muted-foreground"
                   >
                     No data found
@@ -417,7 +422,7 @@
     </div>
 
     <!-- Pagination Controls -->
-    {#if !error && (tab.columns?.length || 0) > 0}
+    {#if !error && columns.length > 0}
       <div
         class="flex justify-between items-center p-4 border-t bg-muted/10 text-sm text-muted-foreground"
       >

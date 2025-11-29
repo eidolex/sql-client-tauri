@@ -7,38 +7,43 @@
   import { cn } from "$lib/utils";
   import { goto } from "$app/navigation";
 
-  let { id }: { id: string } = $props();
+  let { spaceId }: { spaceId: string } = $props();
 
   const appState = getAppState();
 
   // When the selected connection changes, we might want to reset or restore expanded state
   // For now, let's just keep it simple.
 
-  let currentSpace = $derived(id ? appState.spaces.get(id) : null);
+  let currentSpace = $derived(spaceId ? appState.spaces.get(spaceId) : null);
 
-  function openTable(space: ActiveConnection, table: string) {
+  function openTable(table: string) {
     // Check if tab already exists
-    const existingTab = appState.tabs.find(
-      (t) =>
-        t.connectionId === space.id && t.table === table && t.type === "data"
-    );
+    const existingTab = appState.tabs
+      .get(spaceId)
+      ?.find(
+        (t) =>
+          (t.type === "data" || t.type === "structure") && t.table === table
+      );
 
     if (existingTab) {
-      appState.activeTabId = existingTab.id;
+      appState.selectTab(spaceId, existingTab.id);
     } else {
-      appState.addTab({
+      appState.addTab(spaceId, {
         id: crypto.randomUUID(),
         title: table,
         type: "data",
-        connectionId: space.id,
-        database: space.currentDatabase,
+        connectionId: spaceId,
+        database: currentSpace!.currentDatabase,
         table: table,
+        page: 1,
+        pageSize: 50,
+        totalRows: 0,
       });
     }
   }
 
   function openSqlEditor(space: ActiveConnection) {
-    appState.addTab({
+    appState.addTab(spaceId, {
       id: crypto.randomUUID(),
       title: `Query: ${space.config.name}`,
       type: "query",
@@ -60,9 +65,6 @@
     };
 
     if (appState.hasConnection(newConnection)) {
-      console.log(
-        "Connection already exists, redirecting to existing connection"
-      );
       goto(`/${appState.getConnectionId(newConnection)}`);
       return;
     }
@@ -160,7 +162,7 @@
                   <Button
                     variant="ghost"
                     class="w-full justify-start h-7 px-2 text-sm text-muted-foreground font-normal"
-                    onclick={() => openTable(currentSpace!, table)}
+                    onclick={() => openTable(table)}
                   >
                     <Table class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
                     <span class="truncate">{table}</span>

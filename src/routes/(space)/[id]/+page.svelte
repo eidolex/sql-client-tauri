@@ -6,28 +6,27 @@
   import type { PageProps } from "./$types";
   import DataViewer from "$lib/partials/space/DataViewer.svelte";
   import StructureViewer from "$lib/partials/space/StructureViewer.svelte";
-  import SqlEditor from "$lib/partials/space/SqlEditor.svelte";
 
   const { params }: PageProps = $props();
+
+  const spaceId = $derived(params.id);
 
   const appState = getAppState();
 
   $effect(() => {
-    appState.connectSpace(params.id);
+    appState.connectSpace(spaceId);
   });
 
   let currentConnectionTabs = $derived(
-    params.id
-      ? appState.tabs.filter(
-          (t) => t.connectionId === appState.selectedConnectionId
-        )
-      : []
+    spaceId ? (appState.tabs.get(spaceId) ?? []) : []
   );
-  let activeTabId = $derived(appState.activeTabId);
+  let activeTabId = $derived(
+    spaceId ? (appState.spaces.get(spaceId)?.activeTabId ?? null) : null
+  );
 
   function closeTab(id: string, e: Event) {
     e.stopPropagation();
-    appState.closeTab(id);
+    appState.closeTab(spaceId, id);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -36,7 +35,7 @@
       // Only close tab if there's an active tab
       if (activeTabId) {
         e.preventDefault(); // Prevent default browser behavior
-        appState.closeTab(activeTabId);
+        appState.closeTab(spaceId, activeTabId);
       }
     }
   }
@@ -44,12 +43,12 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<TableList id={params.id} />
+<TableList spaceId={params.id} />
 
 <main class="flex-1 h-full overflow-hidden bg-background relative">
   <div class="h-full w-full flex flex-col bg-background">
     <!-- Second Level: Tab Bar (Only if a connection is selected) -->
-    {#if appState.selectedConnectionId}
+    {#if spaceId}
       <div class="flex bg-muted/10 border-b overflow-x-auto no-scrollbar">
         {#if currentConnectionTabs.length === 0}
           <div
@@ -66,7 +65,7 @@
                 ? "bg-background text-foreground border-t-2 border-t-primary"
                 : "bg-muted/10 text-muted-foreground hover:bg-muted/30 border-t-2 border-t-transparent"
             )}
-            onclick={() => (appState.activeTabId = tab.id)}
+            onclick={() => appState.selectTab(spaceId, tab.id)}
           >
             {#if tab.type === "data"}
               <Database class="h-4 w-4 text-blue-500" />
@@ -114,23 +113,20 @@
             </Button> -->
         </div>
       {:else}
-        {#each appState.tabs as tab (tab.id)}
+        {#each currentConnectionTabs as tab (tab.id)}
           <div
             class="absolute inset-0 bg-background"
             class:hidden={activeTabId !== tab.id}
           >
             {#if tab.type === "data"}
-              <DataViewer {tab} />
+              <DataViewer {spaceId} tabId={tab.id} />
             {:else if tab.type === "structure"}
-              <StructureViewer
-                connectionId={tab.connectionId}
-                tableName={tab.table!}
-              />
-            {:else if tab.type === "query"}
+              <StructureViewer spaceId={tab.connectionId} tabId={tab.id} />
+              <!-- {:else if tab.type === "query"}
               <SqlEditor
                 connectionId={tab.connectionId}
                 initialQuery={tab.query}
-              />
+              /> -->
             {/if}
           </div>
         {/each}
