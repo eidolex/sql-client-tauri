@@ -127,7 +127,7 @@
       {
         title: "Delete Connection",
         kind: "warning",
-      },
+      }
     );
     if (!confirmed) return;
 
@@ -184,7 +184,7 @@
               "group flex justify-between items-center p-2 rounded-md cursor-pointer transition-colors",
               selectedConnectionId === conn.id
                 ? "bg-primary/10 text-primary"
-                : "hover:bg-muted",
+                : "hover:bg-muted"
             )}
             onclick={() => selectConnection(conn)}
             onkeydown={(e) => e.key === "Enter" && selectConnection(conn)}
@@ -238,6 +238,8 @@
                 id="connection_name"
                 bind:value={currentConnection.name}
                 placeholder="My Database"
+                autocapitalize="none"
+                autocorrect="off"
               />
             </div>
 
@@ -249,7 +251,7 @@
                   class={cn(
                     "h-auto flex-col gap-2 p-4",
                     currentConnection.db_type === "postgres" &&
-                      "border-primary bg-primary/5",
+                      "border-primary bg-primary/5"
                   )}
                   onclick={() => {
                     currentConnection.db_type = "postgres";
@@ -264,7 +266,7 @@
                   class={cn(
                     "h-auto flex-col gap-2 p-4",
                     currentConnection.db_type === "mysql" &&
-                      "border-primary bg-primary/5",
+                      "border-primary bg-primary/5"
                   )}
                   onclick={() => {
                     currentConnection.db_type = "mysql";
@@ -284,6 +286,8 @@
                   id="connection_host"
                   bind:value={currentConnection.host}
                   placeholder="localhost"
+                  autocapitalize="none"
+                  autocorrect="off"
                 />
               </div>
               <div class="grid gap-2">
@@ -293,6 +297,8 @@
                   type="number"
                   bind:value={currentConnection.port}
                   placeholder="5432"
+                  autocapitalize="none"
+                  autocorrect="off"
                 />
               </div>
             </div>
@@ -304,6 +310,8 @@
                   id="connection_username"
                   bind:value={currentConnection.username}
                   placeholder="postgres"
+                  autocapitalize="none"
+                  autocorrect="off"
                 />
               </div>
               <div class="grid gap-2">
@@ -313,6 +321,8 @@
                   type="password"
                   bind:value={currentConnection.password}
                   placeholder="••••••••"
+                  autocapitalize="none"
+                  autocorrect="off"
                 />
               </div>
             </div>
@@ -323,6 +333,8 @@
                 id="connection_database"
                 bind:value={currentConnection.database}
                 placeholder="postgres"
+                autocapitalize="none"
+                autocorrect="off"
               />
             </div>
           </CardContent>
@@ -343,6 +355,9 @@
               <div
                 class="flex items-center space-x-2"
                 onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => e.stopPropagation()}
+                role="button"
+                tabindex="0"
               >
                 <Checkbox
                   id="ssh_enabled"
@@ -366,7 +381,7 @@
           </button>
 
           {#if showSshConfig}
-            <div class="px-6 pb-6 pt-0 space-y-4 border-t pt-4">
+            <div class="px-6 pb-6 space-y-4 border-t pt-4">
               <div class="grid grid-cols-3 gap-4">
                 <div class="col-span-2 grid gap-2">
                   <Label for="ssh_host">SSH Host</Label>
@@ -374,6 +389,8 @@
                     id="ssh_host"
                     bind:value={currentConnection.ssh_host}
                     placeholder="remote.server.com"
+                    autocapitalize="none"
+                    autocorrect="off"
                   />
                 </div>
                 <div class="grid gap-2">
@@ -383,6 +400,8 @@
                     type="number"
                     bind:value={currentConnection.ssh_port}
                     placeholder="22"
+                    autocapitalize="none"
+                    autocorrect="off"
                   />
                 </div>
               </div>
@@ -393,6 +412,8 @@
                     id="ssh_user"
                     bind:value={currentConnection.ssh_user}
                     placeholder="root"
+                    autocapitalize="none"
+                    autocorrect="off"
                   />
                 </div>
                 <div class="grid gap-2">
@@ -402,6 +423,8 @@
                     type="password"
                     bind:value={currentConnection.ssh_password}
                     placeholder="••••••••"
+                    autocapitalize="none"
+                    autocorrect="off"
                   />
                 </div>
                 <div class="grid gap-2">
@@ -410,6 +433,8 @@
                     id="ssh_key_path"
                     bind:value={currentConnection.ssh_key_path}
                     placeholder="~/.ssh/id_rsa"
+                    autocapitalize="none"
+                    autocorrect="off"
                   />
                 </div>
               </div>
