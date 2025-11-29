@@ -136,6 +136,13 @@ pub async fn disconnect_db(
 
     if let Some(conn) = conn {
         conn.provider.close().await;
+
+        // Clean up dead tunnel references
+        // When the connection is dropped, the Arc<SshTunnel> is dropped.
+        // If this was the last reference, the tunnel will be stopped automatically.
+        // We clean up the Weak references that can no longer be upgraded.
+        let mut tunnels = state.tunnels.lock().unwrap();
+        tunnels.retain(|_, weak_tunnel| weak_tunnel.upgrade().is_some());
     }
     Ok(())
 }

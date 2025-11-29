@@ -25,6 +25,7 @@ pub struct SshTunnel {
 
 impl Drop for SshTunnel {
     fn drop(&mut self) {
+        eprintln!("SSH Tunnel: Dropping tunnel on port {}", self.local_port);
         self.stop();
     }
 }
@@ -77,9 +78,12 @@ impl SshTunnel {
     }
 
     pub fn stop(&mut self) {
+        eprintln!("SSH Tunnel: Stopping tunnel on port {}", self.local_port);
         self.running.store(false, Ordering::SeqCst);
         if let Some(handle) = self.handle.take() {
+            eprintln!("SSH Tunnel: Waiting for tunnel thread to finish...");
             let _ = handle.join();
+            eprintln!("SSH Tunnel: Tunnel stopped on port {}", self.local_port);
         }
     }
 
