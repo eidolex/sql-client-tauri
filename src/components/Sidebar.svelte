@@ -173,7 +173,7 @@
             </Button>
         </div>
 
-        <ScrollArea class="flex-1">
+        <ScrollArea class="flex-1 min-h-0">
             <div class="p-2">
                 <div
                     class="text-xs text-muted-foreground uppercase font-semibold mb-2 px-2"
