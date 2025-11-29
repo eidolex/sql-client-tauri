@@ -20,7 +20,7 @@
     // Check if tab already exists
     const existingTab = appState.tabs
       .get(spaceId)
-      ?.find(
+      ?.items.find(
         (t) =>
           (t.type === "data" || t.type === "structure") && t.table === table
       );

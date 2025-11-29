@@ -18,7 +18,7 @@
   });
 
   let currentConnectionTabs = $derived(
-    spaceId ? (appState.tabs.get(spaceId) ?? []) : []
+    spaceId ? (appState.tabs.get(spaceId)?.items ?? []) : []
   );
   let activeTabId = $derived(
     spaceId ? (appState.spaces.get(spaceId)?.activeTabId ?? null) : null
@@ -119,9 +119,9 @@
             class:hidden={activeTabId !== tab.id}
           >
             {#if tab.type === "data"}
-              <DataViewer {spaceId} tabId={tab.id} />
+              <DataViewer {tab} />
             {:else if tab.type === "structure"}
-              <StructureViewer spaceId={tab.connectionId} tabId={tab.id} />
+              <StructureViewer spaceId={tab.connectionId} {tab} />
               <!-- {:else if tab.type === "query"}
               <SqlEditor
                 connectionId={tab.connectionId}

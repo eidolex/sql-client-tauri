@@ -3,31 +3,22 @@
   import {
     getTableStructure,
     getTableIndexes,
-    type ColumnDefinition,
     type IndexDefinition,
   } from "$lib/db";
   import { Button } from "$lib/components/ui/button";
   import * as Table from "$lib/components/ui/table";
   import { Badge } from "$lib/components/ui/badge";
-  import { Loader2, Table as TableIcon } from "lucide-svelte";
-  import { getAppState, type StructureTab } from "$lib/stores/state.svelte";
+  import { LoaderCircle, Table as TableIcon } from "lucide-svelte";
+  import type { TableTab } from "$lib/stores/table-tab.state.svelte";
 
-  const appState = getAppState();
-
-  let { spaceId, tabId } = $props<{
+  let { spaceId, tab } = $props<{
     spaceId: string;
-    tabId: string;
+    tab: TableTab;
   }>();
 
   let indexes = $state<IndexDefinition[]>([]);
   let loading = $state(false);
   let error = $state("");
-
-  let tab = $derived(
-    appState.tabs
-      .get(spaceId)!
-      .find((t) => t.type === "structure" && t.id === tabId)! as StructureTab
-  );
 
   $effect(() => {
     if (spaceId && tab) {
@@ -49,10 +40,7 @@
       const responses = await Promise.all(promises);
       indexes = responses[0];
       if (responses[1]) {
-        appState.updateTab(spaceId, {
-          ...tab,
-          columns: responses[1],
-        });
+        tab.columns = responses[1];
       }
     } catch (e: any) {
       error = e.message || "Failed to load structure";
@@ -73,13 +61,14 @@
         variant="outline"
         size="sm"
         onclick={() => {
-          appState.updateTab(spaceId, {
-            ...tab,
-            page: tab.page || 1,
-            pageSize: tab.pageSize || 50,
-            totalRows: tab.totalRows || 0,
-            type: "data",
-          });
+          tab.type = "data";
+          // appState.updateTab(spaceId, {
+          //   ...tab,
+          //   page: tab.page || 1,
+          //   pageSize: tab.pageSize || 50,
+          //   totalRows: tab.totalRows || 0,
+          //   type: "data",
+          // });
         }}
       >
         <TableIcon class="mr-2 h-4 w-4" />
@@ -93,7 +82,7 @@
       <div
         class="flex flex-col items-center justify-center h-full text-muted-foreground gap-2"
       >
-        <Loader2 class="h-8 w-8 animate-spin" />
+        <LoaderCircle class="h-8 w-8 animate-spin" />
         <span>Loading structure...</span>
       </div>
     {:else if error}

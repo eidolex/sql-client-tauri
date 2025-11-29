@@ -2,7 +2,6 @@
   import { untrack } from "svelte";
   import { getTableData, getTableStructure, type QueryResult } from "$lib/db";
   import {
-    Filter as FilterIcon,
     RefreshCw,
     Plus,
     Trash2,
@@ -10,18 +9,15 @@
     ChevronRight,
     ArrowUp,
     ArrowDown,
-    Loader2,
+    Funnel,
+    LoaderCircle,
   } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Table from "$lib/components/ui/table";
   import { Badge } from "$lib/components/ui/badge";
   import { Card } from "$lib/components/ui/card";
-  import {
-    getAppState,
-    type DataTab,
-    type Tab,
-  } from "$lib/stores/state.svelte";
+  import type { TableTab } from "$lib/stores/table-tab.state.svelte";
 
   interface Filter {
     field: string;
@@ -34,21 +30,13 @@
     order: "ASC" | "DESC";
   }
 
-  const appState = getAppState();
-
-  let { spaceId, tabId } = $props<{ spaceId: string; tabId: string }>();
+  let { tab }: { tab: TableTab } = $props();
 
   let loading = $state(false);
   let error = $state("");
   let showFilters = $state(false);
   let filters = $state<Filter[]>([]);
   let sorts = $state<Sort[]>([]);
-
-  let tab = $derived(
-    appState.tabs
-      .get(spaceId)!
-      .find((t) => t.type === "data" && t.id === tabId)! as DataTab
-  );
 
   let columns = $derived(tab.columns?.map((c) => c.column_name) || []);
 
@@ -74,10 +62,7 @@
     if (!tab.table) return;
     try {
       const structure = await getTableStructure(tab.connectionId, tab.table);
-      appState.updateTab(tab.connectionId, {
-        ...tab,
-        columns: structure,
-      });
+      tab.columns = structure;
     } catch (e) {
       console.error("Failed to load structure", e);
     }
@@ -108,11 +93,6 @@
 
       tab.data = result.rows;
       tab.totalRows = result.total_rows || 0;
-      appState.updateTab(tab.connectionId, {
-        ...tab,
-        data: result.rows,
-        totalRows: result.total_rows || 0,
-      });
     } catch (e: any) {
       error = e.message || "Failed to load data";
     } finally {
@@ -213,7 +193,7 @@
           class="gap-2"
           onclick={() => (showFilters = !showFilters)}
         >
-          <FilterIcon class="h-4 w-4" />
+          <Funnel class="h-4 w-4" />
           Filter
           {#if filters.length > 0}
             <Badge variant="secondary" class="ml-1 px-1.5 py-0 h-5 text-[10px]"
@@ -229,10 +209,7 @@
           variant="outline"
           size="sm"
           onclick={() => {
-            appState.updateTab(tab.connectionId, {
-              ...tab,
-              type: "structure",
-            });
+            tab.type = "structure";
           }}
         >
           Structure
@@ -321,7 +298,7 @@
           <div
             class="flex flex-col items-center justify-center h-full text-muted-foreground gap-2"
           >
-            <Loader2 class="h-8 w-8 animate-spin" />
+            <LoaderCircle class="h-8 w-8 animate-spin" />
             <span>Loading structure...</span>
           </div>
         {:else}
@@ -368,7 +345,7 @@
                     <div
                       class="flex justify-center items-center gap-2 text-muted-foreground"
                     >
-                      <Loader2 class="h-4 w-4 animate-spin" />
+                      <LoaderCircle class="h-4 w-4 animate-spin" />
                       Loading data...
                     </div>
                   </Table.Cell>
@@ -413,7 +390,7 @@
             <div
               class="bg-background border shadow-lg px-4 py-2 rounded-md flex items-center gap-2"
             >
-              <Loader2 class="h-4 w-4 animate-spin" />
+              <LoaderCircle class="h-4 w-4 animate-spin" />
               <span>Loading...</span>
             </div>
           </div>

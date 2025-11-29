@@ -3,10 +3,10 @@ import {
   connectDb,
   listDatabases,
   listTables,
-  type ColumnDefinition,
   type SavedConnection,
 } from "../db";
 import { SvelteMap } from "svelte/reactivity";
+import { TableTabState, type Tab } from "./table-tab.state.svelte";
 
 export interface ActiveConnection {
   id: string; // The runtime connection ID returned by backend
@@ -17,85 +17,20 @@ export interface ActiveConnection {
   activeTabId?: string; // Track the active tab for this connection
   status: "initial" | "connecting" | "connected" | "error";
 }
-
-type BaseTab = {
-  id: string;
-  title: string;
-  connectionId: string;
-  database: string;
-};
-
-export type DataTab = BaseTab & {
-  type: "data";
-  table: string;
-  columns?: ColumnDefinition[];
-  page: number;
-  pageSize: number;
-  totalRows: number;
-  data?: any[];
-};
-
-export type StructureTab = BaseTab & {
-  type: "structure";
-  table: string;
-  columns?: ColumnDefinition[];
-  page?: number;
-  pageSize?: number;
-  totalRows?: number;
-  data?: any[];
-};
-
-export type QueryTab = BaseTab & {
-  type: "query";
-  query?: string;
-};
-
-export type Tab = DataTab | StructureTab | QueryTab;
 export class AppState {
   spaces = new SvelteMap<string, ActiveConnection>();
   tunnels = new SvelteMap<string, Promise<unknown>>();
-  tabs = new SvelteMap<string, Tab[]>();
+  tabs = new SvelteMap<string, TableTabState>();
   // This now tracks the globally selected connection (top level tab)
   selectedConnectionId = $state<string | null>(null);
-
-  // We can keep this for backward compatibility or easy access,
-  // but the source of truth for "what is visible" depends on selectedConnectionId
-  // If selectedConnectionId is null, we are in "Home" or "New Connection" view
-  // If selectedConnectionId is set, we show tabs for that connection
-
-  // Helper to get the active tab ID for the current connection
-  // get activeTabId() {
-  //   if (!this.selectedConnectionId) return null;
-  //   const conn = this.activeConnections.find(
-  //     (c) => c.id === this.selectedConnectionId
-  //   );
-  //   return conn?.activeTabId ?? null;
-  // }
-
-  // set activeTabId(id: string | null) {
-  //   if (this.selectedConnectionId) {
-  //     const conn = this.activeConnections.find(
-  //       (c) => c.id === this.selectedConnectionId
-  //     );
-  //     if (conn && id) {
-  //       conn.activeTabId = id;
-  //     }
-  //   }
-  // }
 
   constructor() {}
 
   addTab(connectionId: string, tab: Tab) {
     if (!this.tabs.has(connectionId)) {
-      this.tabs.set(connectionId, [tab]);
-      this.selectTab(connectionId, tab.id);
-      return;
+      this.tabs.set(connectionId, new TableTabState());
     }
-    const tabs = this.tabs.get(connectionId)?.slice() || [];
-
-    tabs.push(tab);
-
-    this.tabs.set(connectionId, tabs);
+    this.tabs.get(connectionId)?.addTab(tab);
     this.selectTab(connectionId, tab.id);
   }
 
@@ -103,11 +38,11 @@ export class AppState {
     if (!this.tabs.has(connectionId)) {
       return;
     }
-    const tabs = this.tabs.get(connectionId) || [];
-    const newTabs = tabs.filter((t) => t.id !== tabId);
-    this.tabs.set(connectionId, newTabs);
+    const tabState = this.tabs.get(connectionId);
 
-    const lastTab = newTabs.at(-1);
+    tabState?.removeTab(tabId);
+
+    const lastTab = tabState?.items.at(-1);
 
     if (lastTab) {
       this.selectTab(connectionId, lastTab.id);
@@ -127,16 +62,16 @@ export class AppState {
     this.spaces.set(connectionId, { ...space, activeTabId: tabId });
   }
 
-  updateTab(connectionId: string, tab: Tab) {
-    if (!this.tabs.has(connectionId)) {
-      return;
-    }
-    const tabs = this.tabs.get(connectionId) || [];
-    this.tabs.set(
-      connectionId,
-      tabs.map((t) => (t.id === tab.id ? tab : t))
-    );
-  }
+  // updateTab(connectionId: string, tab: Tab) {
+  //   if (!this.tabs.has(connectionId)) {
+  //     return;
+  //   }
+  //   const tabs = this.tabs.get(connectionId) || [];
+  //   this.tabs.set(
+  //     connectionId,
+  //     tabs.map((t) => (t.id === tab.id ? tab : t))
+  //   );
+  // }
 
   hasConnection(connection: SavedConnection) {
     const tunnelKey = this.generateTunnelKey(connection);
