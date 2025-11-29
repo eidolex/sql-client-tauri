@@ -9,7 +9,12 @@
         ChevronDown,
         Plug,
         LogOut,
+        Loader2,
     } from "lucide-svelte";
+    import { Button } from "$lib/components/ui/button";
+    import { ScrollArea } from "$lib/components/ui/scroll-area";
+    import { Separator } from "$lib/components/ui/separator";
+    import { cn } from "$lib/utils";
 
     let expandedDatabases = $state<Set<string>>(new Set());
 
@@ -138,101 +143,109 @@
     }
 </script>
 
-<div
-    class="w-64 bg-gray-900 text-white h-full flex flex-col border-r border-gray-800"
->
+<div class="w-64 bg-muted/30 h-full flex flex-col border-r">
     {#if !currentConnection}
         <!-- Home / No Connection Selected -->
-        <div
-            class="p-4 border-b border-gray-800 font-bold flex items-center gap-2"
-        >
-            <Database size={20} />
+        <div class="p-4 border-b font-semibold flex items-center gap-2">
+            <Database class="h-5 w-5" />
             <span>Explorer</span>
         </div>
-        <div class="p-4 text-sm text-gray-400">
+        <div class="p-4 text-sm text-muted-foreground">
             Select a connection from the left bar or create a new one.
         </div>
     {:else}
         <!-- Active Connection Context -->
-        <div
-            class="p-4 border-b border-gray-800 flex items-center justify-between group"
-        >
+        <div class="p-4 border-b flex items-center justify-between group">
             <div
-                class="font-bold truncate"
+                class="font-semibold truncate text-sm"
                 title={currentConnection.config.name}
             >
                 {currentConnection.config.name}
             </div>
-            <button
-                class="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+            <Button
+                variant="ghost"
+                size="icon"
+                class="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
                 onclick={closeCurrentConnection}
                 title="Close Connection"
             >
-                <LogOut size={16} />
-            </button>
+                <LogOut class="h-3 w-3" />
+            </Button>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-2">
-            <div
-                class="text-xs text-gray-500 uppercase font-semibold mb-2 px-2"
-            >
-                Databases
-            </div>
-
-            {#each currentConnection.databases as db}
-                <div class="mb-1">
-                    <button
-                        class="w-full flex items-center gap-2 px-2 py-1 rounded text-sm hover:bg-gray-800 text-left"
-                        class:text-blue-400={currentConnection.currentDatabase ===
-                            db}
-                        class:font-medium={currentConnection.currentDatabase ===
-                            db}
-                        class:text-gray-400={currentConnection.currentDatabase !==
-                            db}
-                        onclick={() => switchDatabase(currentConnection!, db)}
-                        disabled={connectingDatabases.has(
-                            `${currentConnection.id}-${db}`,
-                        )}
-                    >
-                        {#if connectingDatabases.has(`${currentConnection.id}-${db}`)}
-                            <div
-                                class="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"
-                            ></div>
-                        {:else}
-                            <Database size={14} />
-                        {/if}
-                        <span class="truncate flex-1">{db}</span>
-                        {#if currentConnection.currentDatabase === db}
-                            <div class="w-2 h-2 rounded-full bg-blue-500"></div>
-                        {/if}
-                    </button>
-
-                    <!-- Show tables if this is the active database -->
-                    {#if currentConnection.currentDatabase === db}
-                        <div class="ml-4 mt-1 border-l border-gray-800 pl-2">
-                            <button
-                                class="w-full flex items-center gap-2 px-2 py-1 mb-1 hover:bg-gray-800 rounded text-sm text-gray-400"
-                                onclick={() =>
-                                    openSqlEditor(currentConnection!)}
-                            >
-                                <Terminal size={14} />
-                                <span>SQL Editor</span>
-                            </button>
-
-                            {#each currentConnection.tables as table}
-                                <button
-                                    class="w-full text-left px-2 py-1 rounded hover:bg-gray-800 text-sm flex items-center gap-2 text-gray-300"
-                                    onclick={() =>
-                                        openTable(currentConnection!, table)}
-                                >
-                                    <Table size={14} class="text-gray-500" />
-                                    <span class="truncate">{table}</span>
-                                </button>
-                            {/each}
-                        </div>
-                    {/if}
+        <ScrollArea class="flex-1">
+            <div class="p-2">
+                <div
+                    class="text-xs text-muted-foreground uppercase font-semibold mb-2 px-2"
+                >
+                    Databases
                 </div>
-            {/each}
-        </div>
+
+                {#each currentConnection.databases as db}
+                    <div class="mb-1">
+                        <Button
+                            variant="ghost"
+                            class={cn(
+                                "w-full justify-start h-8 px-2 text-sm font-normal",
+                                currentConnection.currentDatabase === db
+                                    ? "text-primary font-medium bg-primary/10 hover:bg-primary/20"
+                                    : "text-muted-foreground",
+                            )}
+                            onclick={() =>
+                                switchDatabase(currentConnection!, db)}
+                            disabled={connectingDatabases.has(
+                                `${currentConnection.id}-${db}`,
+                            )}
+                        >
+                            {#if connectingDatabases.has(`${currentConnection.id}-${db}`)}
+                                <Loader2
+                                    class="mr-2 h-3.5 w-3.5 animate-spin"
+                                />
+                            {:else}
+                                <Database class="mr-2 h-3.5 w-3.5" />
+                            {/if}
+                            <span class="truncate flex-1 text-left">{db}</span>
+                            {#if currentConnection.currentDatabase === db}
+                                <div
+                                    class="w-1.5 h-1.5 rounded-full bg-primary ml-auto"
+                                ></div>
+                            {/if}
+                        </Button>
+
+                        <!-- Show tables if this is the active database -->
+                        {#if currentConnection.currentDatabase === db}
+                            <div class="ml-4 mt-1 border-l pl-2 space-y-0.5">
+                                <Button
+                                    variant="ghost"
+                                    class="w-full justify-start h-7 px-2 text-sm text-muted-foreground"
+                                    onclick={() =>
+                                        openSqlEditor(currentConnection!)}
+                                >
+                                    <Terminal class="mr-2 h-3.5 w-3.5" />
+                                    <span>SQL Editor</span>
+                                </Button>
+
+                                {#each currentConnection.tables as table}
+                                    <Button
+                                        variant="ghost"
+                                        class="w-full justify-start h-7 px-2 text-sm text-muted-foreground font-normal"
+                                        onclick={() =>
+                                            openTable(
+                                                currentConnection!,
+                                                table,
+                                            )}
+                                    >
+                                        <Table
+                                            class="mr-2 h-3.5 w-3.5 text-muted-foreground/70"
+                                        />
+                                        <span class="truncate">{table}</span>
+                                    </Button>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
+        </ScrollArea>
     {/if}
 </div>

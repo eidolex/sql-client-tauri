@@ -4,11 +4,30 @@
   import StructureViewer from "../components/StructureViewer.svelte";
   import SqlEditor from "../components/SqlEditor.svelte";
   import Connection from "../components/Connection.svelte";
-  import { X, Database } from "lucide-svelte";
+  import { X, Database, Terminal, TableProperties } from "lucide-svelte";
+  import { Button } from "$lib/components/ui/button";
+  import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { cn } from "$lib/utils";
 
   function closeTab(id: string, e: Event) {
     e.stopPropagation();
     appState.closeTab(id);
+  }
+
+  function createNewQuery() {
+    if (appState.selectedConnectionId) {
+      const connection = appState.getConnection(appState.selectedConnectionId);
+      if (connection) {
+        appState.addTab({
+          id: crypto.randomUUID(),
+          type: "query",
+          title: "New Query",
+          connectionId: appState.selectedConnectionId,
+          database: connection.currentDatabase,
+          query: "",
+        });
+      }
+    }
   }
 
   // Derived state for tabs of the currently selected connection
@@ -23,38 +42,47 @@
   let activeTabId = $derived(appState.activeTabId);
 </script>
 
-<div class="h-full w-full flex flex-col bg-gray-950">
+<div class="h-full w-full flex flex-col bg-background">
   <!-- Second Level: Tab Bar (Only if a connection is selected) -->
   {#if appState.selectedConnectionId}
-    <div class="flex bg-gray-900 border-b border-gray-800 overflow-x-auto pl-2">
+    <div class="flex bg-muted/10 border-b overflow-x-auto no-scrollbar">
       {#if currentConnectionTabs.length === 0}
-        <div class="px-4 py-2 text-sm text-gray-500 italic">
-          No open tabs. Select a table from the sidebar.
+        <div
+          class="px-4 py-2 text-sm text-muted-foreground italic flex items-center h-10"
+        >
+          No open tabs
         </div>
       {/if}
       {#each currentConnectionTabs as tab (tab.id)}
         <button
-          class="group px-4 py-2 text-sm font-medium border-r border-gray-800 hover:bg-gray-800 flex items-center gap-2 min-w-[120px] max-w-[200px]"
-          class:bg-gray-800={activeTabId === tab.id}
-          class:text-white={activeTabId === tab.id}
-          class:text-gray-400={activeTabId !== tab.id}
+          class={cn(
+            "group px-4 py-2 text-sm font-medium border-r flex items-center gap-2 min-w-[140px] max-w-[240px] h-10 transition-colors relative",
+            activeTabId === tab.id
+              ? "bg-background text-foreground border-t-2 border-t-primary"
+              : "bg-muted/10 text-muted-foreground hover:bg-muted/30 border-t-2 border-t-transparent",
+          )}
           onclick={() => (appState.activeTabId = tab.id)}
         >
           {#if tab.type === "data"}
-            <Database size={14} class="text-blue-400" />
+            <Database class="h-4 w-4 text-blue-500" />
           {:else if tab.type === "query"}
-            <span class="text-xs font-mono bg-gray-700 px-1 rounded">SQL</span>
+            <Terminal class="h-4 w-4 text-green-500" />
+          {:else if tab.type === "structure"}
+            <TableProperties class="h-4 w-4 text-orange-500" />
           {/if}
           <span class="truncate flex-1 text-left">{tab.title}</span>
-          <span
-            class="opacity-0 group-hover:opacity-100 hover:text-red-400 rounded p-0.5"
+          <div
+            class={cn(
+              "opacity-0 group-hover:opacity-100 rounded-sm p-0.5 hover:bg-destructive/10 hover:text-destructive transition-all",
+              activeTabId === tab.id && "opacity-100",
+            )}
             onclick={(e) => closeTab(tab.id, e)}
             role="button"
             tabindex="0"
             onkeydown={(e) => e.key === "Enter" && closeTab(tab.id, e)}
           >
-            <X size={14} />
-          </span>
+            <X class="h-3 w-3" />
+          </div>
         </button>
       {/each}
     </div>
@@ -68,15 +96,26 @@
       <!-- Show content for the selected connection's active tab -->
       {#if !activeTabId}
         <div
-          class="flex flex-col items-center justify-center h-full text-gray-500"
+          class="flex flex-col items-center justify-center h-full text-muted-foreground gap-4"
         >
-          <Database size={48} class="mb-4 opacity-20" />
-          <p>Select a table or run a query</p>
+          <div class="bg-muted/30 p-6 rounded-full">
+            <Database class="h-16 w-16 opacity-20" />
+          </div>
+          <div class="text-center space-y-2">
+            <h3 class="text-lg font-semibold text-foreground">No Active Tab</h3>
+            <p class="text-sm max-w-xs mx-auto">
+              Select a table from the sidebar or start a new SQL query.
+            </p>
+          </div>
+          <Button onclick={createNewQuery} variant="outline" class="mt-2">
+            <Terminal class="mr-2 h-4 w-4" />
+            New Query
+          </Button>
         </div>
       {:else}
         {#each appState.tabs as tab (tab.id)}
           <div
-            class="absolute inset-0 bg-gray-950"
+            class="absolute inset-0 bg-background"
             class:hidden={activeTabId !== tab.id}
           >
             {#if tab.type === "data"}

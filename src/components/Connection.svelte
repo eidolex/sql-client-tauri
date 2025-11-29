@@ -17,7 +17,23 @@
     ChevronDown,
     ChevronRight,
     Database,
+    Plus,
   } from "lucide-svelte";
+
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
+  import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { Separator } from "$lib/components/ui/separator";
+  import { Checkbox } from "$lib/components/ui/checkbox";
+  import * as Select from "$lib/components/ui/select";
+  import { cn } from "$lib/utils";
 
   let connections = $state<SavedConnection[]>([]);
   let selectedConnectionId = $state<string | null>(null);
@@ -142,218 +158,172 @@
   }
 </script>
 
-<div class="flex h-full bg-gray-950 text-white">
+<div class="flex h-full bg-background text-foreground">
   <!-- Sidebar: Saved Connections -->
-  <div class="w-64 border-r border-gray-800 flex flex-col bg-gray-900">
-    <div class="p-4 border-b border-gray-800 flex justify-between items-center">
-      <h3 class="font-bold text-gray-300">Connections</h3>
-      <button
-        class="text-sm bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded"
-        onclick={createNew}
-      >
-        New
-      </button>
+  <div class="w-64 border-r flex flex-col bg-muted/30">
+    <div class="p-4 border-b flex justify-between items-center">
+      <h3 class="font-semibold text-sm">Connections</h3>
+      <Button variant="ghost" size="icon" onclick={createNew} class="h-8 w-8">
+        <Plus class="h-4 w-4" />
+      </Button>
     </div>
-    <div class="flex-1 overflow-y-auto p-2 space-y-1">
-      {#each connections as conn}
-        <div
-          class="group flex justify-between items-center p-2 rounded cursor-pointer {selectedConnectionId ===
-          conn.id
-            ? 'bg-blue-900/30 border border-blue-800'
-            : 'hover:bg-gray-800 border border-transparent'}"
-          onclick={() => selectConnection(conn)}
-          onkeydown={(e) => e.key === "Enter" && selectConnection(conn)}
-          role="button"
-          tabindex="0"
-        >
-          <div class="truncate text-sm font-medium">
-            {conn.name}
-            <div class="text-xs text-gray-500 truncate">
-              {conn.username}@{conn.host}:{conn.port}
-            </div>
-          </div>
-          <button
-            class="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition-opacity"
-            onclick={(e) => {
-              e.stopPropagation();
-              remove(conn.id);
-            }}
+    <ScrollArea class="flex-1">
+      <div class="p-2 space-y-1">
+        {#each connections as conn}
+          <div
+            class={cn(
+              "group flex justify-between items-center p-2 rounded-md cursor-pointer transition-colors",
+              selectedConnectionId === conn.id
+                ? "bg-primary/10 text-primary"
+                : "hover:bg-muted",
+            )}
+            onclick={() => selectConnection(conn)}
+            onkeydown={(e) => e.key === "Enter" && selectConnection(conn)}
+            role="button"
+            tabindex="0"
           >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      {/each}
-    </div>
+            <div class="truncate text-sm font-medium flex-1">
+              {conn.name}
+              <div class="text-xs text-muted-foreground truncate">
+                {conn.username}@{conn.host}:{conn.port}
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              class="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+              onclick={(e) => {
+                e.stopPropagation();
+                remove(conn.id);
+              }}
+            >
+              <Trash2 class="h-3 w-3" />
+            </Button>
+          </div>
+        {/each}
+      </div>
+    </ScrollArea>
   </div>
 
   <!-- Main: Connection Form -->
-  <div class="flex-1 flex flex-col overflow-y-auto">
+  <div class="flex-1 flex flex-col overflow-y-auto bg-background">
     <div class="p-8 max-w-2xl mx-auto w-full">
-      <h2 class="text-2xl font-bold mb-6 flex items-center gap-2">
-        <Plug class="text-blue-500" />
-        {currentConnection.name || "New Connection"}
-      </h2>
+      <div class="mb-6 flex items-center gap-2">
+        <div class="p-2 bg-primary/10 rounded-lg">
+          <Plug class="text-primary h-6 w-6" />
+        </div>
+        <h2 class="text-2xl font-bold tracking-tight">
+          {currentConnection.name || "New Connection"}
+        </h2>
+      </div>
 
       <div class="space-y-6">
         <!-- General Settings -->
-        <div class="space-y-4">
-          <div>
-            <label
-              for="id_connection_name"
-              class="block text-sm font-medium text-gray-400 mb-1"
-              >Connection Name</label
-            >
-            <input
-              id="id_connection_name"
-              type="text"
-              bind:value={currentConnection.name}
-              class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-              placeholder="My Database"
-              autocapitalize="off"
-              autocomplete="off"
-              spellcheck="false"
-              autocorrect="off"
-            />
-          </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>General Settings</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="grid gap-2">
+              <Label for="connection_name">Connection Name</Label>
+              <Input
+                id="connection_name"
+                bind:value={currentConnection.name}
+                placeholder="My Database"
+              />
+            </div>
 
-          <div>
-            <label
-              for="id_connection_type"
-              class="block text-sm font-medium text-gray-400 mb-1"
-              >Database Type</label
-            >
+            <div class="grid gap-2">
+              <Label>Database Type</Label>
+              <div class="grid grid-cols-2 gap-4">
+                <Button
+                  variant="outline"
+                  class={cn(
+                    "h-auto flex-col gap-2 p-4",
+                    currentConnection.db_type === "postgres" &&
+                      "border-primary bg-primary/5",
+                  )}
+                  onclick={() => {
+                    currentConnection.db_type = "postgres";
+                    handleDbTypeChange();
+                  }}
+                >
+                  <Database class="h-6 w-6" />
+                  <span>PostgreSQL</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  class={cn(
+                    "h-auto flex-col gap-2 p-4",
+                    currentConnection.db_type === "mysql" &&
+                      "border-primary bg-primary/5",
+                  )}
+                  onclick={() => {
+                    currentConnection.db_type = "mysql";
+                    handleDbTypeChange();
+                  }}
+                >
+                  <Database class="h-6 w-6" />
+                  <span>MySQL</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-4">
+              <div class="col-span-2 grid gap-2">
+                <Label for="connection_host">Host</Label>
+                <Input
+                  id="connection_host"
+                  bind:value={currentConnection.host}
+                  placeholder="localhost"
+                />
+              </div>
+              <div class="grid gap-2">
+                <Label for="connection_port">Port</Label>
+                <Input
+                  id="connection_port"
+                  type="number"
+                  bind:value={currentConnection.port}
+                  placeholder="5432"
+                />
+              </div>
+            </div>
+
             <div class="grid grid-cols-2 gap-4">
-              <button
-                class="flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all {currentConnection.db_type ===
-                'postgres'
-                  ? 'border-blue-500 bg-blue-900/20 text-blue-400'
-                  : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:bg-gray-800'}"
-                onclick={() => {
-                  currentConnection.db_type = "postgres";
-                  handleDbTypeChange();
-                }}
-              >
-                <Database class="w-8 h-8 mb-2" />
-                <span class="font-medium">PostgreSQL</span>
-              </button>
-
-              <button
-                class="flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all {currentConnection.db_type ===
-                'mysql'
-                  ? 'border-orange-500 bg-orange-900/20 text-orange-400'
-                  : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:bg-gray-800'}"
-                onclick={() => {
-                  currentConnection.db_type = "mysql";
-                  handleDbTypeChange();
-                }}
-              >
-                <Database class="w-8 h-8 mb-2" />
-                <span class="font-medium">MySQL</span>
-              </button>
+              <div class="grid gap-2">
+                <Label for="connection_username">Username</Label>
+                <Input
+                  id="connection_username"
+                  bind:value={currentConnection.username}
+                  placeholder="postgres"
+                />
+              </div>
+              <div class="grid gap-2">
+                <Label for="connection_password">Password</Label>
+                <Input
+                  id="connection_password"
+                  type="password"
+                  bind:value={currentConnection.password}
+                  placeholder="••••••••"
+                />
+              </div>
             </div>
-          </div>
 
-          <div class="grid grid-cols-3 gap-4">
-            <div class="col-span-2">
-              <label
-                for="id_connection_host"
-                class="block text-sm font-medium text-gray-400 mb-1">Host</label
-              >
-              <input
-                id="id_connection_host"
-                type="text"
-                bind:value={currentConnection.host}
-                class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-                placeholder="localhost"
-                autocapitalize="off"
-                autocomplete="off"
-                spellcheck="false"
-                autocorrect="off"
-              />
-            </div>
-            <div>
-              <label
-                for="id_connection_port"
-                class="block text-sm font-medium text-gray-400 mb-1">Port</label
-              >
-              <input
-                id="id_connection_port"
-                type="number"
-                bind:value={currentConnection.port}
-                class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-                placeholder="5432"
-                autocapitalize="off"
-                autocomplete="off"
-                spellcheck="false"
-                autocorrect="off"
-              />
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label
-                for="id_connection_username"
-                class="block text-sm font-medium text-gray-400 mb-1"
-                >Username</label
-              >
-              <input
-                id="id_connection_username"
-                type="text"
-                bind:value={currentConnection.username}
-                class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+            <div class="grid gap-2">
+              <Label for="connection_database">Database</Label>
+              <Input
+                id="connection_database"
+                bind:value={currentConnection.database}
                 placeholder="postgres"
-                autocapitalize="off"
-                autocomplete="off"
-                spellcheck="false"
-                autocorrect="off"
               />
             </div>
-            <div>
-              <label
-                for="id_connection_password"
-                class="block text-sm font-medium text-gray-400 mb-1"
-                >Password</label
-              >
-              <input
-                id="id_connection_password"
-                type="password"
-                bind:value={currentConnection.password}
-                class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-                placeholder="••••••••"
-                autocapitalize="off"
-                autocomplete="off"
-                spellcheck="false"
-                autocorrect="off"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label
-              for="id_connection_database"
-              class="block text-sm font-medium text-gray-400 mb-1"
-              >Database</label
-            >
-            <input
-              id="id_connection_database"
-              type="text"
-              bind:value={currentConnection.database}
-              class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-              placeholder="postgres"
-              autocapitalize="off"
-              autocomplete="off"
-              spellcheck="false"
-              autocorrect="off"
-            />
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         <!-- SSH Tunnel Settings -->
-        <div class="border border-gray-800 rounded bg-gray-900/30">
+        <Card>
           <button
-            id="id_connection_ssh_toggle"
-            class="w-full flex justify-between items-center p-4 text-left font-medium text-gray-300 hover:bg-gray-800/50 transition-colors"
+            class="w-full flex justify-between items-center p-6 text-left"
             onclick={() => {
               showSshConfig = !showSshConfig;
               if (showSshConfig) currentConnection.ssh_enabled = true;
@@ -361,152 +331,103 @@
             }}
           >
             <div class="flex items-center gap-2">
-              <input
-                id="id_connection_ssh_checkbox"
-                type="checkbox"
-                checked={currentConnection.ssh_enabled}
+              <!-- Checkbox needs to be handled carefully inside a button -->
+              <div
+                class="flex items-center space-x-2"
                 onclick={(e) => e.stopPropagation()}
-                onchange={(e) =>
-                  (currentConnection.ssh_enabled = e.currentTarget.checked)}
-                class="rounded border-gray-700 bg-gray-900 text-blue-600 focus:ring-blue-500"
-              />
-              <span>Use SSH Tunnel</span>
+              >
+                <Checkbox
+                  id="ssh_enabled"
+                  checked={currentConnection.ssh_enabled}
+                  onCheckedChange={(v: boolean) =>
+                    (currentConnection.ssh_enabled = v)}
+                />
+                <Label
+                  for="ssh_enabled"
+                  class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Use SSH Tunnel
+                </Label>
+              </div>
             </div>
             {#if showSshConfig}
-              <ChevronDown size={16} />
+              <ChevronDown class="h-4 w-4 text-muted-foreground" />
             {:else}
-              <ChevronRight size={16} />
+              <ChevronRight class="h-4 w-4 text-muted-foreground" />
             {/if}
           </button>
 
           {#if showSshConfig}
-            <div class="p-4 pt-0 space-y-4 border-t border-gray-800 mt-2">
+            <div class="px-6 pb-6 pt-0 space-y-4 border-t pt-4">
               <div class="grid grid-cols-3 gap-4">
-                <div class="col-span-2">
-                  <label
-                    for="id_connection_ssh_host"
-                    class="block text-sm font-medium text-gray-400 mb-1"
-                    >SSH Host</label
-                  >
-                  <input
-                    id="id_connection_ssh_host"
-                    type="text"
+                <div class="col-span-2 grid gap-2">
+                  <Label for="ssh_host">SSH Host</Label>
+                  <Input
+                    id="ssh_host"
                     bind:value={currentConnection.ssh_host}
-                    class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
                     placeholder="remote.server.com"
-                    autocapitalize="off"
-                    autocomplete="off"
-                    spellcheck="false"
-                    autocorrect="off"
                   />
                 </div>
-                <div>
-                  <label
-                    for="id_connection_ssh_port"
-                    class="block text-sm font-medium text-gray-400 mb-1"
-                    >SSH Port</label
-                  >
-                  <input
-                    id="id_connection_ssh_port"
+                <div class="grid gap-2">
+                  <Label for="ssh_port">SSH Port</Label>
+                  <Input
+                    id="ssh_port"
                     type="number"
                     bind:value={currentConnection.ssh_port}
-                    class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
                     placeholder="22"
-                    autocapitalize="off"
-                    autocomplete="off"
-                    spellcheck="false"
-                    autocorrect="off"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    for="id_connection_ssh_password"
-                    class="block text-sm font-medium text-gray-400 mb-1"
-                    >SSH Password</label
-                  >
-                  <input
-                    id="id_connection_ssh_password"
-                    type="password"
-                    bind:value={currentConnection.ssh_password}
-                    class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-                    placeholder="••••••••"
-                    autocapitalize="off"
-                    autocomplete="off"
-                    spellcheck="false"
-                    autocorrect="off"
                   />
                 </div>
               </div>
-
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <label
-                    for="id_connection_ssh_user"
-                    class="block text-sm font-medium text-gray-400 mb-1"
-                    >SSH User</label
-                  >
-                  <input
-                    id="id_connection_ssh_user"
-                    type="text"
+              <div class="grid grid-cols-3 gap-4">
+                <div class="grid gap-2">
+                  <Label for="ssh_user">SSH User</Label>
+                  <Input
+                    id="ssh_user"
                     bind:value={currentConnection.ssh_user}
-                    class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
                     placeholder="root"
-                    autocapitalize="off"
-                    autocomplete="off"
-                    spellcheck="false"
-                    autocorrect="off"
                   />
                 </div>
-                <div>
-                  <label
-                    for="id_connection_ssh_key_path"
-                    class="block text-sm font-medium text-gray-400 mb-1"
-                    >SSH Key Path</label
-                  >
-                  <input
-                    id="id_connection_ssh_key_path"
-                    type="text"
+                <div class="grid gap-2">
+                  <Label for="ssh_password">SSH Password</Label>
+                  <Input
+                    id="ssh_password"
+                    type="password"
+                    bind:value={currentConnection.ssh_password}
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div class="grid gap-2">
+                  <Label for="ssh_key_path">SSH Key Path</Label>
+                  <Input
+                    id="ssh_key_path"
                     bind:value={currentConnection.ssh_key_path}
-                    class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
                     placeholder="~/.ssh/id_rsa"
-                    autocapitalize="off"
-                    autocomplete="off"
-                    spellcheck="false"
-                    autocorrect="off"
                   />
                 </div>
               </div>
             </div>
           {/if}
-        </div>
+        </Card>
 
         {#if error}
           <div
-            class="text-red-500 text-sm p-3 bg-red-900/20 rounded border border-red-900/50"
+            class="text-destructive text-sm p-3 bg-destructive/10 rounded-md border border-destructive/20"
           >
             {error}
           </div>
         {/if}
 
         <div class="flex gap-4 pt-4">
-          <button
-            onclick={connect}
-            disabled={loading}
-            class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
+          <Button onclick={connect} disabled={loading} class="flex-1 gap-2">
             {#if loading}
               Connecting...
             {:else}
-              <Plug size={18} /> Connect
+              <Plug class="h-4 w-4" /> Connect
             {/if}
-          </button>
-          <button
-            onclick={save}
-            class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded transition-colors flex items-center gap-2"
-          >
-            <Save size={18} /> Save
-          </button>
+          </Button>
+          <Button variant="secondary" onclick={save} class="gap-2">
+            <Save class="h-4 w-4" /> Save
+          </Button>
         </div>
       </div>
     </div>

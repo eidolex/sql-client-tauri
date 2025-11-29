@@ -7,6 +7,10 @@
         type ColumnDefinition,
         type IndexDefinition,
     } from "$lib/db";
+    import { Button } from "$lib/components/ui/button";
+    import * as Table from "$lib/components/ui/table";
+    import { Badge } from "$lib/components/ui/badge";
+    import { Loader2, Table as TableIcon } from "lucide-svelte";
 
     let { connectionId, tableName } = $props<{
         connectionId: string;
@@ -44,17 +48,16 @@
     }
 </script>
 
-<div class="h-full flex flex-col">
-    <div
-        class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900"
-    >
-        <h2 class="text-lg font-bold flex items-center gap-2">
-            <span class="text-gray-400">Structure:</span>
+<div class="h-full flex flex-col bg-background">
+    <div class="p-4 border-b flex justify-between items-center bg-muted/10">
+        <h2 class="text-lg font-semibold flex items-center gap-2">
+            <span class="text-muted-foreground">Structure:</span>
             {tableName}
         </h2>
         <div class="flex gap-2">
-            <button
-                class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm"
+            <Button
+                variant="outline"
+                size="sm"
                 onclick={() => {
                     const tab = appState.tabs.find(
                         (t) => t.id === appState.activeTabId,
@@ -64,163 +67,145 @@
                     }
                 }}
             >
+                <TableIcon class="mr-2 h-4 w-4" />
                 View Data
-            </button>
+            </Button>
         </div>
     </div>
 
-    <div class="flex-1 overflow-auto bg-gray-950 p-4">
+    <div class="flex-1 overflow-auto p-4">
         {#if loading}
-            <div class="flex items-center justify-center h-full text-gray-500">
-                Loading...
+            <div
+                class="flex flex-col items-center justify-center h-full text-muted-foreground gap-2"
+            >
+                <Loader2 class="h-8 w-8 animate-spin" />
+                <span>Loading structure...</span>
             </div>
         {:else if error}
             <div
-                class="text-red-500 p-4 border border-red-900/50 bg-red-900/20 rounded"
+                class="text-destructive p-4 border border-destructive/20 bg-destructive/10 rounded-md"
             >
                 Error: {error}
             </div>
         {:else if structure.length === 0}
-            <div class="flex items-center justify-center h-full text-gray-500">
+            <div
+                class="flex items-center justify-center h-full text-muted-foreground"
+            >
                 No structure found
             </div>
         {:else}
-            <div class="overflow-x-auto border border-gray-800 rounded mb-4">
-                <table class="w-full text-left text-sm whitespace-nowrap">
-                    <thead class="bg-gray-900 text-gray-400 font-medium">
-                        <tr>
-                            <th class="px-4 py-2 border-b border-gray-800"
-                                >Column Name</th
-                            >
-                            <th class="px-4 py-2 border-b border-gray-800"
-                                >Data Type</th
-                            >
-                            <th class="px-4 py-2 border-b border-gray-800"
-                                >Nullable</th
-                            >
-                            <th class="px-4 py-2 border-b border-gray-800"
-                                >Default</th
-                            >
-                            <th class="px-4 py-2 border-b border-gray-800"
-                                >Foreign Key</th
-                            >
-                            <th class="px-4 py-2 border-b border-gray-800"
-                                >Comment</th
-                            >
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-800">
+            <div class="border rounded-md mb-8">
+                <Table.Root>
+                    <Table.Header>
+                        <Table.Row>
+                            <Table.Head>Column Name</Table.Head>
+                            <Table.Head>Data Type</Table.Head>
+                            <Table.Head>Nullable</Table.Head>
+                            <Table.Head>Default</Table.Head>
+                            <Table.Head>Foreign Key</Table.Head>
+                            <Table.Head>Comment</Table.Head>
+                        </Table.Row>
+                    </Table.Header>
+                    <Table.Body>
                         {#each structure as col}
-                            <tr class="hover:bg-gray-900/50">
-                                <td class="px-4 py-2 font-mono text-blue-400"
-                                    >{col.column_name}</td
+                            <Table.Row>
+                                <Table.Cell class="font-mono text-primary"
+                                    >{col.column_name}</Table.Cell
                                 >
-                                <td class="px-4 py-2 text-yellow-500"
-                                    >{col.data_type}</td
+                                <Table.Cell
+                                    class="text-yellow-600 dark:text-yellow-400"
+                                    >{col.data_type}</Table.Cell
                                 >
-                                <td class="px-4 py-2">
-                                    <span
-                                        class:text-green-500={col.is_nullable ===
-                                            "YES"}
-                                        class:text-red-500={col.is_nullable ===
-                                            "NO"}
+                                <Table.Cell>
+                                    <Badge
+                                        variant={col.is_nullable === "YES"
+                                            ? "secondary"
+                                            : "destructive"}
+                                        class="text-[10px]"
                                     >
                                         {col.is_nullable}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-2 text-gray-400"
-                                    >{col.column_default || "-"}</td
+                                    </Badge>
+                                </Table.Cell>
+                                <Table.Cell class="text-muted-foreground"
+                                    >{col.column_default || "-"}</Table.Cell
                                 >
-                                <td class="px-4 py-2 text-purple-400"
-                                    >{col.foreign_key || "-"}</td
+                                <Table.Cell
+                                    class="text-purple-600 dark:text-purple-400"
+                                    >{col.foreign_key || "-"}</Table.Cell
                                 >
-                                <td class="px-4 py-2 text-gray-500 italic"
-                                    >{col.comment || "-"}</td
+                                <Table.Cell class="text-muted-foreground italic"
+                                    >{col.comment || "-"}</Table.Cell
                                 >
-                            </tr>
+                            </Table.Row>
                         {/each}
-                    </tbody>
-                </table>
+                    </Table.Body>
+                </Table.Root>
             </div>
 
             {#if indexes.length > 0}
                 <div class="mb-2">
-                    <h3 class="text-md font-bold text-gray-400 mb-2">
+                    <h3
+                        class="text-md font-semibold text-muted-foreground mb-4"
+                    >
                         Indexes
                     </h3>
-                    <div class="overflow-x-auto border border-gray-800 rounded">
-                        <table
-                            class="w-full text-left text-sm whitespace-nowrap"
-                        >
-                            <thead
-                                class="bg-gray-900 text-gray-400 font-medium"
-                            >
-                                <tr>
-                                    <th
-                                        class="px-4 py-2 border-b border-gray-800"
-                                        >Index Name</th
-                                    >
-                                    <th
-                                        class="px-4 py-2 border-b border-gray-800"
-                                        >Algorithm</th
-                                    >
-                                    <th
-                                        class="px-4 py-2 border-b border-gray-800"
-                                        >Unique</th
-                                    >
-                                    <th
-                                        class="px-4 py-2 border-b border-gray-800"
-                                        >Columns</th
-                                    >
-                                    <th
-                                        class="px-4 py-2 border-b border-gray-800"
-                                        >Condition</th
-                                    >
-                                    <th
-                                        class="px-4 py-2 border-b border-gray-800"
-                                        >Comment</th
-                                    >
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-800">
+                    <div class="border rounded-md">
+                        <Table.Root>
+                            <Table.Header>
+                                <Table.Row>
+                                    <Table.Head>Index Name</Table.Head>
+                                    <Table.Head>Algorithm</Table.Head>
+                                    <Table.Head>Unique</Table.Head>
+                                    <Table.Head>Columns</Table.Head>
+                                    <Table.Head>Condition</Table.Head>
+                                    <Table.Head>Comment</Table.Head>
+                                </Table.Row>
+                            </Table.Header>
+                            <Table.Body>
                                 {#each indexes as idx}
-                                    <tr class="hover:bg-gray-900/50">
-                                        <td
-                                            class="px-4 py-2 font-mono text-green-400"
+                                    <Table.Row>
+                                        <Table.Cell
+                                            class="font-mono text-green-600 dark:text-green-400"
                                         >
                                             {idx.index_name}
                                             {#if idx.is_primary}
-                                                <span
-                                                    class="ml-2 text-xs bg-blue-900 text-blue-300 px-1 rounded"
-                                                    >PK</span
+                                                <Badge
+                                                    variant="default"
+                                                    class="ml-2 text-[10px] h-4 px-1"
+                                                    >PK</Badge
                                                 >
                                             {/if}
-                                        </td>
-                                        <td class="px-4 py-2 text-gray-400"
-                                            >{idx.index_algorithm}</td
+                                        </Table.Cell>
+                                        <Table.Cell
+                                            class="text-muted-foreground"
+                                            >{idx.index_algorithm}</Table.Cell
                                         >
-                                        <td class="px-4 py-2">
-                                            <span
-                                                class:text-green-500={idx.is_unique}
-                                                class:text-gray-600={!idx.is_unique}
+                                        <Table.Cell>
+                                            <Badge
+                                                variant={idx.is_unique
+                                                    ? "default"
+                                                    : "secondary"}
+                                                class="text-[10px]"
                                             >
                                                 {idx.is_unique ? "YES" : "NO"}
-                                            </span>
-                                        </td>
-                                        <td class="px-4 py-2 text-yellow-500"
-                                            >{idx.column_names}</td
+                                            </Badge>
+                                        </Table.Cell>
+                                        <Table.Cell
+                                            class="text-yellow-600 dark:text-yellow-400"
+                                            >{idx.column_names}</Table.Cell
                                         >
-                                        <td class="px-4 py-2 text-gray-400"
-                                            >{idx.condition || "-"}</td
+                                        <Table.Cell
+                                            class="text-muted-foreground"
+                                            >{idx.condition || "-"}</Table.Cell
                                         >
-                                        <td
-                                            class="px-4 py-2 text-gray-500 italic"
-                                            >{idx.comment || "-"}</td
+                                        <Table.Cell
+                                            class="text-muted-foreground italic"
+                                            >{idx.comment || "-"}</Table.Cell
                                         >
-                                    </tr>
+                                    </Table.Row>
                                 {/each}
-                            </tbody>
-                        </table>
+                            </Table.Body>
+                        </Table.Root>
                     </div>
                 </div>
             {/if}
