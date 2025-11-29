@@ -122,12 +122,19 @@
 
     function formatCell(value: any): string {
         if (value === null || value === undefined) {
-            return "";
+            return "NULL";
+        }
+        if (value === "") {
+            return "EMPTY";
         }
         if (typeof value === "object") {
             return JSON.stringify(value);
         }
         return String(value);
+    }
+
+    function isSpecialValue(value: any): boolean {
+        return value === null || value === undefined || value === "";
     }
 
     function addFilter() {
@@ -407,7 +414,13 @@
                                                 class="max-w-xs truncate"
                                                 title={formatCell(cell)}
                                             >
-                                                {formatCell(cell)}
+                                                <span
+                                                    class={isSpecialValue(cell)
+                                                        ? "text-muted-foreground/50 italic text-xs"
+                                                        : ""}
+                                                >
+                                                    {formatCell(cell)}
+                                                </span>
                                             </Table.Cell>
                                         {/each}
                                     </Table.Row>
