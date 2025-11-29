@@ -280,80 +280,6 @@ fn row_to_values(row: PgRow) -> Vec<serde_json::Value> {
     values
 }
 
-fn row_to_json(row: PgRow) -> serde_json::Value {
-    let mut row_map = serde_json::Map::new();
-    for col in row.columns() {
-        let col_name = col.name();
-        let type_info = col.type_info();
-        let type_name = type_info.name();
-
-        let value = match type_name {
-            "BOOL" => {
-                let val: Option<bool> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "INT2" | "INT4" | "INT" => {
-                let val: Option<i32> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "INT8" | "BIGINT" => {
-                let val: Option<i64> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "FLOAT4" | "REAL" => {
-                let val: Option<f32> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "FLOAT8" | "DOUBLE PRECISION" => {
-                let val: Option<f64> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "VARCHAR" | "TEXT" | "BPCHAR" | "NAME" | "UNKNOWN" => {
-                let val: Option<String> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "TIMESTAMP" | "Timestamp" => {
-                let val: Option<chrono::NaiveDateTime> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "TIMESTAMPTZ" | "Timestamptz" => {
-                let val: Option<chrono::DateTime<chrono::Utc>> =
-                    row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "UUID" | "Uuid" => {
-                let val: Option<uuid::Uuid> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "JSON" | "JSONB" => {
-                let val: Option<serde_json::Value> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "INET" | "inet" | "CIDR" | "cidr" => {
-                let val: Option<ipnetwork::IpNetwork> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "DATE" | "Date" => {
-                let val: Option<chrono::NaiveDate> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "TIME" | "Time" => {
-                let val: Option<chrono::NaiveTime> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            _ => {
-                if let Ok(val) = row.try_get::<String, _>(col_name) {
-                    serde_json::Value::String(val)
-                } else {
-                    serde_json::Value::String(format!("Unsupported Type: {}", type_name))
-                }
-            }
-        };
-        row_map.insert(col_name.to_string(), value);
-    }
-    serde_json::Value::Object(row_map)
-}
-
 #[derive(serde::Deserialize, Debug)]
 pub struct Filter {
     field: String,
@@ -580,25 +506,146 @@ pub async fn get_table_data(
     })
 }
 
+#[derive(serde::Serialize)]
+pub struct ColumnDefinition {
+    column_name: String,
+    data_type: String,
+    is_nullable: String,
+    column_default: Option<String>,
+    comment: Option<String>,
+    foreign_key: Option<String>,
+}
+
 #[tauri::command]
 pub async fn get_table_structure(
     connection_id: String,
     table_name: String,
     state: State<'_, AppState>,
-) -> Result<Vec<serde_json::Value>, DatabaseError> {
+) -> Result<Vec<ColumnDefinition>, DatabaseError> {
     let pool = get_pool(&state, &connection_id)?;
 
-    let rows = sqlx::query(
-        "SELECT column_name, data_type, is_nullable 
-         FROM information_schema.columns 
-         WHERE table_name = $1 
-         ORDER BY ordinal_position;",
-    )
-    .bind(table_name)
-    .fetch_all(&pool)
-    .await?;
+    // Query to get detailed column information including exact type, default, comment, and FKs
+    let query = "
+        SELECT 
+            a.attname AS column_name,
+            format_type(a.atttypid, a.atttypmod) AS data_type,
+            CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable,
+            pg_get_expr(d.adbin, d.adrelid) AS column_default,
+            col_description(a.attrelid, a.attnum) AS comment,
+            (
+                SELECT 
+                    confrelid::regclass::text || '(' || a2.attname || ')'
+                FROM pg_constraint c
+                JOIN pg_attribute a2 ON a2.attnum = c.confkey[1] AND a2.attrelid = c.confrelid
+                WHERE c.conrelid = a.attrelid 
+                  AND c.contype = 'f' 
+                  AND c.conkey[1] = a.attnum
+                LIMIT 1
+            ) AS foreign_key
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = $1::regclass
+          AND a.attnum > 0 
+          AND NOT a.attisdropped
+        ORDER BY a.attnum;
+    ";
 
-    let results: Vec<serde_json::Value> = rows.into_iter().map(row_to_json).collect();
+    let table_oid_str = if table_name.contains('.') {
+        table_name.clone()
+    } else {
+        format!("public.\"{}\"", table_name)
+    };
+
+    let rows = sqlx::query(query)
+        .bind(&table_oid_str)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| DatabaseError {
+            message: format!("Failed to get structure for {}: {}", table_name, e),
+        })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(ColumnDefinition {
+            column_name: row.get("column_name"),
+            data_type: row.get("data_type"),
+            is_nullable: row.get("is_nullable"),
+            column_default: row.get("column_default"),
+            comment: row.get("comment"),
+            foreign_key: row.get("foreign_key"),
+        });
+    }
+
+    Ok(results)
+}
+
+#[derive(serde::Serialize)]
+pub struct IndexDefinition {
+    index_name: String,
+    index_algorithm: String,
+    is_unique: bool,
+    is_primary: bool,
+    column_names: String,
+    condition: Option<String>,
+    comment: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_table_indexes(
+    connection_id: String,
+    table_name: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<IndexDefinition>, DatabaseError> {
+    let pool = get_pool(&state, &connection_id)?;
+
+    let table_oid_str = if table_name.contains('.') {
+        table_name.clone()
+    } else {
+        format!("public.\"{}\"", table_name)
+    };
+
+    let query = "
+        SELECT 
+            i.relname AS index_name,
+            am.amname AS index_algorithm,
+            ix.indisunique AS is_unique,
+            ix.indisprimary AS is_primary,
+            pg_get_indexdef(ix.indexrelid, 0, true) AS full_def,
+            pg_get_expr(ix.indpred, ix.indrelid) AS condition,
+            obj_description(i.oid, 'pg_class') AS comment,
+            (
+                SELECT string_agg(a.attname, ', ' ORDER BY array_position(ix.indkey, a.attnum))
+                FROM pg_attribute a
+                WHERE a.attrelid = ix.indrelid AND a.attnum = ANY(ix.indkey)
+            ) as column_names
+        FROM pg_index ix
+        JOIN pg_class i ON i.oid = ix.indexrelid
+        JOIN pg_am am ON am.oid = i.relam
+        WHERE ix.indrelid = $1::regclass
+        ORDER BY ix.indisprimary DESC, i.relname;
+    ";
+
+    let rows = sqlx::query(query)
+        .bind(&table_oid_str)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| DatabaseError {
+            message: format!("Failed to get indexes for {}: {}", table_name, e),
+        })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(IndexDefinition {
+            index_name: row.get("index_name"),
+            index_algorithm: row.get("index_algorithm"),
+            is_unique: row.get("is_unique"),
+            is_primary: row.get("is_primary"),
+            column_names: row.get("column_names"),
+            condition: row.get("condition"),
+            comment: row.get("comment"),
+        });
+    }
+
     Ok(results)
 }
 

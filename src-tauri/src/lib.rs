@@ -28,6 +28,7 @@ pub fn run() {
             db::list_tables,
             db::get_table_data,
             db::get_table_structure,
+            db::get_table_indexes,
             db::execute_query,
             db::get_database_schema,
             connection_manager::save_connection,

@@ -57,8 +57,31 @@ export async function getTableData(connectionId: string, tableName: string, limi
     return await invoke("get_table_data", { connectionId, tableName, limit, offset, filters, sorts });
 }
 
-export async function getTableStructure(connectionId: string, tableName: string): Promise<any[]> {
+export interface ColumnDefinition {
+    column_name: string;
+    data_type: string;
+    is_nullable: string;
+    column_default?: string;
+    comment?: string;
+    foreign_key?: string;
+}
+
+export interface IndexDefinition {
+    index_name: string;
+    index_algorithm: string;
+    is_unique: boolean;
+    is_primary: boolean;
+    column_names: string;
+    condition?: string;
+    comment?: string;
+}
+
+export async function getTableStructure(connectionId: string, tableName: string): Promise<ColumnDefinition[]> {
     return await invoke("get_table_structure", { connectionId, tableName });
+}
+
+export async function getTableIndexes(connectionId: string, tableName: string): Promise<IndexDefinition[]> {
+    return await invoke("get_table_indexes", { connectionId, tableName });
 }
 
 export async function executeQuery(connectionId: string, query: string): Promise<QueryResult> {
