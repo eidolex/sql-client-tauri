@@ -8,7 +8,7 @@ use tauri::State;
 
 pub struct DbConnection {
     pub pool: Pool<Postgres>,
-    pub ssh_tunnel: Option<Arc<SshTunnel>>,
+    pub _ssh_tunnel: Option<Arc<SshTunnel>>,
 }
 
 pub struct AppState {
@@ -127,7 +127,10 @@ pub async fn connect_db(
     };
 
     let connection_id = uuid::Uuid::new_v4().to_string();
-    let connection = DbConnection { pool, ssh_tunnel };
+    let connection = DbConnection {
+        pool,
+        _ssh_tunnel: ssh_tunnel,
+    };
 
     state
         .connections
@@ -351,30 +354,209 @@ fn row_to_json(row: PgRow) -> serde_json::Value {
     serde_json::Value::Object(row_map)
 }
 
+#[derive(serde::Deserialize, Debug)]
+pub struct Filter {
+    field: String,
+    operator: String,
+    value: String,
+}
+
+// Helper to get column types
+async fn get_column_types(
+    pool: &Pool<Postgres>,
+    table_name: &str,
+) -> Result<HashMap<String, String>, DatabaseError> {
+    let rows = sqlx::query(
+        "SELECT column_name, data_type, udt_name 
+         FROM information_schema.columns 
+         WHERE table_name = $1",
+    )
+    .bind(table_name)
+    .fetch_all(pool)
+    .await?;
+
+    let mut types = HashMap::new();
+    for row in rows {
+        let column_name: String = row.get("column_name");
+        // Use udt_name as it's often more specific (e.g. 'uuid' vs 'USER-DEFINED')
+        let data_type: String = row.get("udt_name");
+        types.insert(column_name, data_type);
+    }
+    Ok(types)
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct Sort {
+    field: String,
+    order: String,
+}
+
 #[tauri::command]
 pub async fn get_table_data(
     connection_id: String,
     table_name: String,
     limit: i64,
     offset: i64,
+    filters: Vec<Filter>,
+    sorts: Vec<Sort>,
     state: State<'_, AppState>,
 ) -> Result<QueryResult, DatabaseError> {
     let pool = get_pool(&state, &connection_id)?;
 
+    // Get column types for casting
+    let column_types = get_column_types(&pool, &table_name).await?;
+
     // WARNING: SQL Injection risk. Validate table_name in production.
+
+    // Build WHERE clause
+    let mut where_clauses = Vec::new();
+    let mut query_params = Vec::new();
+    let mut param_index = 1;
+
+    for filter in &filters {
+        // Basic SQL injection prevention for field names (should be more robust in prod)
+        if !filter
+            .field
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_')
+        {
+            continue;
+        }
+
+        let field = format!("\"{}\"", filter.field);
+        let col_type = column_types
+            .get(&filter.field)
+            .map(|s| s.as_str())
+            .unwrap_or("text");
+
+        // Helper to add cast if needed
+        let cast_suffix = match col_type {
+            "uuid" => "::uuid",
+            "int2" | "int4" | "int8" | "float4" | "float8" | "numeric" => {
+                match filter.operator.as_str() {
+                    // For numeric types, we might need casting if the input is string,
+                    // but Postgres often handles string-to-number implicitly if it looks like a number.
+                    // However, explicit casting is safer.
+                    _ => "",
+                }
+            }
+            "date" => "::date",
+            "timestamp" | "timestamptz" => match col_type {
+                "timestamp" => "::timestamp",
+                "timestamptz" => "::timestamptz",
+                _ => "",
+            },
+            "bool" => "::boolean",
+            _ => "",
+        };
+
+        // For LIKE/ILIKE, we usually want to cast the column to text, not the parameter to column type
+        // But for =, >, <, etc, we want to cast the parameter to the column type.
+
+        match filter.operator.as_str() {
+            "=" => {
+                where_clauses.push(format!("{} = ${}{}", field, param_index, cast_suffix));
+                query_params.push(filter.value.clone());
+                param_index += 1;
+            }
+            ">=" => {
+                where_clauses.push(format!("{} >= ${}{}", field, param_index, cast_suffix));
+                query_params.push(filter.value.clone());
+                param_index += 1;
+            }
+            "<=" => {
+                where_clauses.push(format!("{} <= ${}{}", field, param_index, cast_suffix));
+                query_params.push(filter.value.clone());
+                param_index += 1;
+            }
+            ">" => {
+                where_clauses.push(format!("{} > ${}{}", field, param_index, cast_suffix));
+                query_params.push(filter.value.clone());
+                param_index += 1;
+            }
+            "<" => {
+                where_clauses.push(format!("{} < ${}{}", field, param_index, cast_suffix));
+                query_params.push(filter.value.clone());
+                param_index += 1;
+            }
+            "contain" => {
+                // For text search, cast column to text
+                where_clauses.push(format!("{}::text ILIKE ${}", field, param_index));
+                query_params.push(format!("%{}%", filter.value));
+                param_index += 1;
+            }
+            "start with" => {
+                where_clauses.push(format!("{}::text ILIKE ${}", field, param_index));
+                query_params.push(format!("{}%", filter.value));
+                param_index += 1;
+            }
+            "end with" => {
+                where_clauses.push(format!("{}::text ILIKE ${}", field, param_index));
+                query_params.push(format!("%{}", filter.value));
+                param_index += 1;
+            }
+            "not null" => {
+                where_clauses.push(format!("{} IS NOT NULL", field));
+            }
+            "is null" => {
+                where_clauses.push(format!("{} IS NULL", field));
+            }
+            _ => {}
+        }
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    // Build ORDER BY clause
+    let mut order_clauses = Vec::new();
+    for sort in &sorts {
+        if !sort.field.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            continue;
+        }
+        let direction = if sort.order.to_uppercase() == "DESC" {
+            "DESC"
+        } else {
+            "ASC"
+        };
+        order_clauses.push(format!("\"{}\" {}", sort.field, direction));
+    }
+
+    let order_sql = if order_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("ORDER BY {}", order_clauses.join(", "))
+    };
+
     // Get total count
-    let count_query = format!("SELECT COUNT(*) FROM \"{}\"", table_name);
-    let count_row: (i64,) = sqlx::query_as(&count_query).fetch_one(&pool).await?;
+    let count_query = format!("SELECT COUNT(*) FROM \"{}\" {}", table_name, where_sql);
+    let mut count_q = sqlx::query_as::<_, (i64,)>(&count_query);
+    for param in &query_params {
+        count_q = count_q.bind(param);
+    }
+    let count_row = count_q.fetch_one(&pool).await?;
     let total_rows = count_row.0;
 
     // Get data with pagination
-    let query = format!("SELECT * FROM \"{}\" LIMIT $1 OFFSET $2", table_name);
+    let query = format!(
+        "SELECT * FROM \"{}\" {} {} LIMIT ${} OFFSET ${}",
+        table_name,
+        where_sql,
+        order_sql,
+        param_index,
+        param_index + 1
+    );
 
-    let rows = sqlx::query(&query)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&pool)
-        .await?;
+    let mut q = sqlx::query(&query);
+    for param in &query_params {
+        q = q.bind(param);
+    }
+    q = q.bind(limit).bind(offset);
+
+    let rows = q.fetch_all(&pool).await?;
 
     let columns = if let Some(first_row) = rows.first() {
         first_row

@@ -42,8 +42,19 @@ export interface QueryResult {
     total_rows?: number;
 }
 
-export async function getTableData(connectionId: string, tableName: string, limit: number, offset: number): Promise<QueryResult> {
-    return await invoke("get_table_data", { connectionId, tableName, limit, offset });
+export interface Filter {
+    field: string;
+    operator: string;
+    value: string;
+}
+
+export interface Sort {
+    field: string;
+    order: "ASC" | "DESC";
+}
+
+export async function getTableData(connectionId: string, tableName: string, limit: number, offset: number, filters: Filter[] = [], sorts: Sort[] = []): Promise<QueryResult> {
+    return await invoke("get_table_data", { connectionId, tableName, limit, offset, filters, sorts });
 }
 
 export async function getTableStructure(connectionId: string, tableName: string): Promise<any[]> {

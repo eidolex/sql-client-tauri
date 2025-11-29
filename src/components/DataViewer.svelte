@@ -7,6 +7,21 @@
 
     let loading = $state(false);
     let error = $state("");
+    let showFilters = $state(false);
+
+    interface Filter {
+        field: string;
+        operator: string;
+        value: string;
+    }
+
+    interface Sort {
+        field: string;
+        order: "ASC" | "DESC";
+    }
+
+    let filters = $state<Filter[]>([]);
+    let sorts = $state<Sort[]>([]);
 
     // Initialize defaults if missing
     if (!tab.page) tab.page = 1;
@@ -67,6 +82,8 @@
                 tab.table,
                 tab.pageSize || 50,
                 offset,
+                filters,
+                sorts,
             );
 
             tab.data = result.rows;
@@ -93,32 +110,208 @@
         }
         return String(value);
     }
+
+    function addFilter() {
+        if (tab.columns && tab.columns.length > 0) {
+            filters.push({
+                field: tab.columns[0],
+                operator: "=",
+                value: "",
+            });
+        }
+    }
+
+    function removeFilter(index: number) {
+        filters.splice(index, 1);
+    }
+
+    function applyFilters() {
+        tab.page = 1; // Reset to first page when filtering
+        loadData();
+    }
+
+    function handleHeaderClick(field: string, event: MouseEvent) {
+        const existingSortIndex = sorts.findIndex((s) => s.field === field);
+        const isShift = event.shiftKey;
+
+        if (isShift) {
+            if (existingSortIndex !== -1) {
+                // Toggle existing
+                if (sorts[existingSortIndex].order === "ASC") {
+                    sorts[existingSortIndex].order = "DESC";
+                } else {
+                    sorts.splice(existingSortIndex, 1);
+                }
+            } else {
+                // Add new
+                sorts.push({ field, order: "ASC" });
+            }
+        } else {
+            if (existingSortIndex !== -1 && sorts.length === 1) {
+                // Toggle existing single sort
+                if (sorts[0].order === "ASC") {
+                    sorts[0].order = "DESC";
+                } else {
+                    sorts = [];
+                }
+            } else {
+                // Replace with new single sort
+                sorts = [{ field, order: "ASC" }];
+            }
+        }
+        loadData();
+    }
+
+    function getSortIndicator(field: string) {
+        const index = sorts.findIndex((s) => s.field === field);
+        if (index === -1) return null;
+        return {
+            order: sorts[index].order,
+            index: sorts.length > 1 ? index + 1 : null,
+        };
+    }
 </script>
 
 <div class="h-full flex flex-col">
-    <div
-        class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900"
-    >
-        <h2 class="text-lg font-bold flex items-center gap-2">
-            <span class="text-gray-400">Table:</span>
-            {tab.table}
-        </h2>
-        <div class="flex gap-2">
-            <button
-                class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm"
-                onclick={loadData}
-            >
-                Refresh
-            </button>
-            <button
-                class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm"
-                onclick={() => {
-                    tab.type = "structure";
-                }}
-            >
-                Structure
-            </button>
+    <div class="p-4 border-b border-gray-800 flex flex-col gap-4 bg-gray-900">
+        <div class="flex justify-between items-center">
+            <h2 class="text-lg font-bold flex items-center gap-2">
+                <span class="text-gray-400">Table:</span>
+                {tab.table}
+            </h2>
+            <div class="flex gap-2">
+                <button
+                    class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm flex items-center gap-2"
+                    onclick={() => (showFilters = !showFilters)}
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                        />
+                    </svg>
+                    Filter
+                    {#if filters.length > 0}
+                        <span
+                            class="bg-blue-600 text-white text-xs rounded-full px-1.5"
+                            >{filters.length}</span
+                        >
+                    {/if}
+                </button>
+                <button
+                    class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm"
+                    onclick={loadData}
+                >
+                    Refresh
+                </button>
+                <button
+                    class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-sm"
+                    onclick={() => {
+                        tab.type = "structure";
+                    }}
+                >
+                    Structure
+                </button>
+            </div>
         </div>
+
+        {#if showFilters}
+            <div class="bg-gray-950 p-4 rounded border border-gray-800">
+                <div class="flex flex-col gap-2">
+                    {#each filters as filter, i}
+                        <div class="flex gap-2 items-center">
+                            <select
+                                class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+                                bind:value={filter.field}
+                            >
+                                {#each tab.columns || [] as col}
+                                    <option value={col}>{col}</option>
+                                {/each}
+                            </select>
+                            <select
+                                class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+                                bind:value={filter.operator}
+                            >
+                                <option value="=">=</option>
+                                <option value=">=">&gt;=</option>
+                                <option value="<=">&lt;=</option>
+                                <option value=">">&gt;</option>
+                                <option value="<">&lt;</option>
+                                <option value="contain">contain</option>
+                                <option value="start with">start with</option>
+                                <option value="end with">end with</option>
+                                <option value="not null">not null</option>
+                                <option value="is null">is null</option>
+                            </select>
+                            {#if filter.operator !== "not null" && filter.operator !== "is null"}
+                                <input
+                                    type="text"
+                                    class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm flex-1"
+                                    placeholder="Value"
+                                    bind:value={filter.value}
+                                />
+                            {/if}
+                            <button
+                                class="text-red-400 hover:text-red-300 p-1"
+                                onclick={() => removeFilter(i)}
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M6 18L18 6M6 6l12 12"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+                    {/each}
+                    <div class="flex gap-2 mt-2">
+                        <button
+                            class="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                            onclick={addFilter}
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M12 4v16m8-8H4"
+                                />
+                            </svg>
+                            Add Filter
+                        </button>
+                        <div class="flex-1"></div>
+                        <button
+                            class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm"
+                            onclick={applyFilters}
+                        >
+                            Apply
+                        </button>
+                    </div>
+                </div>
+            </div>
+        {/if}
     </div>
 
     <div class="flex-1 overflow-auto bg-gray-950 p-4 flex flex-col">
@@ -153,10 +346,33 @@
                         >
                             <tr>
                                 {#each tab.columns || [] as header}
+                                    {@const sort = getSortIndicator(header)}
                                     <th
-                                        class="px-4 py-2 border-b border-gray-800 bg-gray-900"
-                                        >{header}</th
+                                        class="px-4 py-2 border-b border-gray-800 bg-gray-900 cursor-pointer hover:bg-gray-800 select-none"
+                                        onclick={(e) =>
+                                            handleHeaderClick(header, e)}
                                     >
+                                        <div class="flex items-center gap-1">
+                                            {header}
+                                            {#if sort}
+                                                <span
+                                                    class="text-xs text-blue-400 flex items-center"
+                                                >
+                                                    {#if sort.order === "ASC"}
+                                                        ▲
+                                                    {:else}
+                                                        ▼
+                                                    {/if}
+                                                    {#if sort.index}
+                                                        <span
+                                                            class="ml-0.5 text-[10px]"
+                                                            >{sort.index}</span
+                                                        >
+                                                    {/if}
+                                                </span>
+                                            {/if}
+                                        </div>
+                                    </th>
                                 {/each}
                             </tr>
                         </thead>
