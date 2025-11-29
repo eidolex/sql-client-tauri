@@ -5,7 +5,7 @@ import {
   listTables,
   type SavedConnection,
 } from "../db";
-import { SvelteMap, SvelteSet } from "svelte/reactivity";
+import { SvelteMap } from "svelte/reactivity";
 
 export interface ActiveConnection {
   id: string; // The runtime connection ID returned by backend
@@ -202,8 +202,9 @@ export class AppState {
     return connectionId;
   }
 
-  async removeSpace(connectionId: string) {
+  removeSpace(connectionId: string) {
     this.spaces.delete(connectionId);
+    return this.spaces.keys().toArray().at(-1) ?? null;
   }
 
   async connectSpace(connectionId: string) {

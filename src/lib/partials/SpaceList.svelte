@@ -7,6 +7,7 @@
   import { cn } from "$lib/utils";
   import { disconnectDb } from "$lib/db";
   import { page } from "$app/state";
+  import { goto } from "$app/navigation";
 
   const appState = getAppState();
 
@@ -22,10 +23,15 @@
       .toUpperCase();
   }
 
-  async function closeConnection(connectionId: string) {
+  async function closeConnection(spaceId: string) {
     try {
-      await disconnectDb(connectionId);
-      appState.removeSpace(connectionId);
+      await disconnectDb(spaceId);
+      const newSpaceId = appState.removeSpace(spaceId);
+      if (newSpaceId) {
+        goto(`/${newSpaceId}`);
+      } else {
+        goto("/new");
+      }
     } catch (e) {
       console.error("Failed to disconnect", e);
     }
