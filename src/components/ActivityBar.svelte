@@ -1,6 +1,7 @@
 <script lang="ts">
     import { appState } from "$lib/state.svelte";
-    import { Plus } from "lucide-svelte";
+    import { disconnectDb } from "$lib/db";
+    import { Plus, LogOut } from "lucide-svelte";
 
     function getInitials(name: string) {
         return name
@@ -9,6 +10,39 @@
             .join("")
             .substring(0, 2)
             .toUpperCase();
+    }
+
+    let contextMenu = $state<{
+        visible: boolean;
+        x: number;
+        y: number;
+        connectionId: string | null;
+    }>({ visible: false, x: 0, y: 0, connectionId: null });
+
+    function handleContextMenu(e: MouseEvent, connectionId: string) {
+        e.preventDefault();
+        contextMenu = {
+            visible: true,
+            x: e.clientX,
+            y: e.clientY,
+            connectionId,
+        };
+    }
+
+    function closeContextMenu() {
+        contextMenu.visible = false;
+    }
+
+    async function closeConnection() {
+        if (contextMenu.connectionId) {
+            try {
+                await disconnectDb(contextMenu.connectionId);
+                appState.removeConnection(contextMenu.connectionId);
+            } catch (e) {
+                console.error("Failed to disconnect", e);
+            }
+        }
+        closeContextMenu();
     }
 </script>
 
@@ -42,6 +76,7 @@
                     connection.id}
                 class:text-white={true}
                 onclick={() => (appState.selectedConnectionId = connection.id)}
+                oncontextmenu={(e) => handleContextMenu(e, connection.id)}
                 title={connection.config.name}
             >
                 <span class="font-bold text-sm">
@@ -57,4 +92,28 @@
             </button>
         {/each}
     </div>
+
+    <!-- Context Menu -->
+    {#if contextMenu.visible}
+        <div
+            class="fixed z-50 bg-gray-800 border border-gray-700 rounded shadow-lg py-1 min-w-[150px]"
+            style="top: {contextMenu.y}px; left: {contextMenu.x}px;"
+        >
+            <button
+                class="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 text-red-400 flex items-center gap-2"
+                onclick={closeConnection}
+            >
+                <LogOut size={14} />
+                Close Connection
+            </button>
+        </div>
+        <!-- Backdrop to close menu -->
+        <div
+            class="fixed inset-0 z-40 bg-transparent"
+            onclick={closeContextMenu}
+            role="button"
+            tabindex="-1"
+            onkeydown={(e) => e.key === "Escape" && closeContextMenu()}
+        ></div>
+    {/if}
 </div>

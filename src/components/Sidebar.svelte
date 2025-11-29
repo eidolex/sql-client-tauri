@@ -64,6 +64,8 @@
         });
     }
 
+    let connectingDatabases = $state<Set<string>>(new Set());
+
     async function switchDatabase(
         connection: ActiveConnection,
         database: string,
@@ -74,15 +76,17 @@
             return;
         }
 
-        // Check if we already have a separate connection for this database
-        // In this new model, "switching" a database might mean creating a NEW connection entry
-        // OR updating the current one.
-        // The user request said: "when i click the database it will create new connection or go to existing one if it already exist"
+        // Check if we are already connecting to this database
+        const connectingKey = `${connection.id}-${database}`;
+        if (connectingDatabases.has(connectingKey)) {
+            return;
+        }
 
         const existing = appState.activeConnections.find(
             (c) =>
                 c.config.host === connection.config.host &&
-                c.config.port === connection.config.port &&
+                c.config.port == connection.config.port &&
+                c.config.username === connection.config.username &&
                 c.currentDatabase === database,
         );
 
@@ -92,6 +96,9 @@
         }
 
         try {
+            connectingDatabases.add(connectingKey);
+            connectingDatabases = new Set(connectingDatabases);
+
             // Connect to new DB as a separate connection
             const newConfig = { ...connection.config, database };
             // Generate a temporary name for the new connection view
@@ -113,6 +120,9 @@
         } catch (e) {
             console.error("Failed to open database connection", e);
             alert("Failed to open database connection: " + e);
+        } finally {
+            connectingDatabases.delete(connectingKey);
+            connectingDatabases = new Set(connectingDatabases);
         }
     }
 
@@ -180,8 +190,17 @@
                         class:text-gray-400={currentConnection.currentDatabase !==
                             db}
                         onclick={() => switchDatabase(currentConnection!, db)}
+                        disabled={connectingDatabases.has(
+                            `${currentConnection.id}-${db}`,
+                        )}
                     >
-                        <Database size={14} />
+                        {#if connectingDatabases.has(`${currentConnection.id}-${db}`)}
+                            <div
+                                class="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"
+                            ></div>
+                        {:else}
+                            <Database size={14} />
+                        {/if}
                         <span class="truncate flex-1">{db}</span>
                         {#if currentConnection.currentDatabase === db}
                             <div class="w-2 h-2 rounded-full bg-blue-500"></div>
