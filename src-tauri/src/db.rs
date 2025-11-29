@@ -1,19 +1,18 @@
-use crate::connection_manager::{ConnectionManager, SavedConnection};
+use crate::connection_manager::SavedConnection;
+use crate::ssh_tunnel::SshTunnel;
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{Column, Pool, Postgres, Row, TypeInfo};
 use std::collections::HashMap;
-use std::process::Child;
 use std::sync::Mutex;
 use tauri::State;
 
 pub struct DbConnection {
     pub pool: Pool<Postgres>,
-    pub ssh_process: Option<Child>,
+    pub ssh_tunnel: Option<SshTunnel>,
 }
 
 pub struct AppState {
     pub connections: Mutex<HashMap<String, DbConnection>>,
-    pub connection_manager: ConnectionManager,
 }
 
 #[derive(serde::Serialize)]
@@ -49,37 +48,33 @@ pub async fn connect_db(
     // 1. Handle SSH Tunnel if enabled
     let mut db_host = connection_config.host.clone();
     let mut db_port = connection_config.port;
-    let mut ssh_child = None;
+    let mut ssh_tunnel = None;
 
     if connection_config.ssh_enabled {
         if let Some(ssh_host) = &connection_config.ssh_host {
-            let ssh_port = connection_config.ssh_port;
-            let ssh_user = connection_config.ssh_user.as_deref();
-            // Simple random port generation
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .subsec_nanos();
-            let local_port = 5433 + (nanos % 1000) as u16;
+            let (tunnel, actual_local_port) = SshTunnel::start(
+                ssh_host.clone(),
+                connection_config.ssh_port,
+                connection_config.ssh_user.clone().filter(|s| !s.is_empty()),
+                connection_config
+                    .ssh_password
+                    .clone()
+                    .filter(|s| !s.is_empty()),
+                connection_config
+                    .ssh_key_path
+                    .clone()
+                    .filter(|s| !s.is_empty()),
+                db_host.clone(),
+                db_port,
+                0, // Use 0 to let OS pick a random port
+            )
+            .map_err(|e| DatabaseError { message: e })?;
 
-            let child = state
-                .connection_manager
-                .start_ssh_tunnel(
-                    ssh_host,
-                    ssh_port,
-                    ssh_user,
-                    connection_config.ssh_key_path.as_deref(),
-                    &db_host,
-                    db_port,
-                    local_port,
-                )
-                .map_err(|e| DatabaseError { message: e })?;
-
-            ssh_child = Some(child);
+            ssh_tunnel = Some(tunnel);
 
             // Update connection info to point to local tunnel
             db_host = "127.0.0.1".to_string();
-            db_port = local_port;
+            db_port = actual_local_port;
         }
     }
 
@@ -100,18 +95,15 @@ pub async fn connect_db(
         Ok(pool) => pool,
         Err(e) => {
             // Clean up SSH process if connection fails
-            if let Some(mut child) = ssh_child {
-                let _ = child.kill();
+            if let Some(mut tunnel) = ssh_tunnel {
+                tunnel.stop();
             }
             return Err(DatabaseError::from(e));
         }
     };
 
     let connection_id = uuid::Uuid::new_v4().to_string();
-    let connection = DbConnection {
-        pool,
-        ssh_process: ssh_child,
-    };
+    let connection = DbConnection { pool, ssh_tunnel };
 
     state
         .connections
@@ -132,10 +124,10 @@ pub async fn disconnect_db(
         connections.remove(&connection_id)
     };
 
-    if let Some(conn) = conn {
+    if let Some(mut conn) = conn {
         conn.pool.close().await;
-        if let Some(mut child) = conn.ssh_process {
-            let _ = child.kill();
+        if let Some(tunnel) = &mut conn.ssh_tunnel {
+            tunnel.stop();
         }
     }
     Ok(())

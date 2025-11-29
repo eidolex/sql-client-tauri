@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "sql-tauri",
-        "width": 800,
-        "height": 600
+        "width": 1240,
+        "height": 720
       }
     ],
     "security": {

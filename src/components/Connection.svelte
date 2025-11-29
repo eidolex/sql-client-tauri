@@ -27,6 +27,7 @@
     ssh_host: "",
     ssh_port: 22,
     ssh_user: "",
+    ssh_password: "",
     ssh_key_path: "",
   });
 
@@ -65,6 +66,7 @@
       ssh_host: "",
       ssh_port: 22,
       ssh_user: "",
+      ssh_password: "",
       ssh_key_path: "",
     };
     selectedConnectionId = null;
@@ -352,6 +354,25 @@
                     bind:value={currentConnection.ssh_port}
                     class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
                     placeholder="22"
+                    autocapitalize="off"
+                    autocomplete="off"
+                    spellcheck="false"
+                    autocorrect="off"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    for="id_connection_ssh_password"
+                    class="block text-sm font-medium text-gray-400 mb-1"
+                    >SSH Password</label
+                  >
+                  <input
+                    id="id_connection_ssh_password"
+                    type="password"
+                    bind:value={currentConnection.ssh_password}
+                    class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    placeholder="••••••••"
                     autocapitalize="off"
                     autocomplete="off"
                     spellcheck="false"

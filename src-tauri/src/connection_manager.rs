@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Child, Command};
 use tauri::AppHandle;
 use tauri::Manager;
 
@@ -18,72 +17,8 @@ pub struct SavedConnection {
     pub ssh_host: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_user: Option<String>,
+    pub ssh_password: Option<String>,
     pub ssh_key_path: Option<String>,
-}
-
-pub struct ConnectionManager;
-
-impl ConnectionManager {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn start_ssh_tunnel(
-        &self,
-        ssh_host: &str,
-        ssh_port: Option<u16>,
-        ssh_user: Option<&str>,
-        ssh_key_path: Option<&str>,
-        remote_host: &str,
-        remote_port: u16,
-        local_port: u16,
-    ) -> Result<Child, String> {
-        let mut command = Command::new("ssh");
-
-        // Basic SSH flags
-        command.arg("-N"); // Do not execute a remote command
-        command.arg("-L"); // Local port forwarding
-        command.arg(format!("{}:{}:{}", local_port, remote_host, remote_port));
-
-        if let Some(key_path) = ssh_key_path {
-            if !key_path.trim().is_empty() {
-                command.arg("-i");
-                command.arg(key_path);
-            }
-        }
-
-        if let Some(port) = ssh_port {
-            command.arg("-p");
-            command.arg(port.to_string());
-        }
-
-        let destination = if let Some(user) = ssh_user {
-            if !user.trim().is_empty() {
-                format!("{}@{}", user, ssh_host)
-            } else {
-                ssh_host.to_string()
-            }
-        } else {
-            ssh_host.to_string()
-        };
-        command.arg(destination);
-
-        // Ensure we don't block on host key verification for better UX in this demo
-        // WARNING: In a real secure app, we should handle known_hosts properly
-        command.arg("-o");
-        command.arg("StrictHostKeyChecking=no");
-        command.arg("-o");
-        command.arg("UserKnownHostsFile=/dev/null");
-
-        let child = command
-            .spawn()
-            .map_err(|e| format!("Failed to start SSH tunnel: {}", e))?;
-
-        // Give it a moment to establish
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-
-        Ok(child)
-    }
 }
 
 fn get_connections_file_path(app_handle: &AppHandle) -> PathBuf {

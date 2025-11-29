@@ -6,8 +6,8 @@ fn greet(name: &str) -> String {
 
 mod connection_manager;
 mod db;
+mod ssh_tunnel;
 
-use connection_manager::ConnectionManager;
 use db::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,7 +16,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             connections: std::sync::Mutex::new(std::collections::HashMap::new()),
-            connection_manager: ConnectionManager::new(),
         })
         .invoke_handler(tauri::generate_handler![
             greet,
