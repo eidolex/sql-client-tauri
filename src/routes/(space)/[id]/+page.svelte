@@ -12,6 +12,10 @@
 
   const appState = getAppState();
 
+  $effect(() => {
+    appState.connectSpace(params.id);
+  });
+
   let currentConnectionTabs = $derived(
     params.id
       ? appState.tabs.filter(
@@ -40,7 +44,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<TableList />
+<TableList id={params.id} />
 
 <main class="flex-1 h-full overflow-hidden bg-background relative">
   <div class="h-full w-full flex flex-col bg-background">

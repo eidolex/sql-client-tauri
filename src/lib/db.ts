@@ -21,8 +21,8 @@ export interface SavedConnection {
     ssh_key_path?: string;
 }
 
-export async function connectDb(connectionConfig: SavedConnection): Promise<string> {
-    return await invoke("connect_db", { connectionConfig });
+export async function connectDb(connectionId: string, connectionConfig: SavedConnection): Promise<void> {
+    return await invoke("connect_db", { connectionId, connectionConfig });
 }
 
 export async function disconnectDb(connectionId: string): Promise<void> {

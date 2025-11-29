@@ -121,10 +121,6 @@ export class AppState {
     }
   }
 
-  getConnection(connectionId: string) {
-    return this.activeConnections.find((c) => c.id === connectionId);
-  }
-
   updateConnectionId(
     oldId: string,
     newId: string,
@@ -154,13 +150,42 @@ export class AppState {
     });
   }
 
-  async addSpace(connection: SavedConnection, connect: boolean = false) {
-    if (this.spaces.has(connection.id)) {
-      return;
+  hasConnection(connection: SavedConnection) {
+    const tunnelKey = this.generateTunnelKey(connection);
+    const newKey = `${tunnelKey}::${connection.host}::${connection.port}::${connection.username}::${connection.database}`;
+
+    for (const space of this.spaces.values()) {
+      const spaceTunnelKey = this.generateTunnelKey(space.config);
+      const spaceKey = `${spaceTunnelKey}::${space.config.host}::${space.config.port}::${space.config.username}::${space.currentDatabase}`;
+      if (spaceKey === newKey) {
+        return true;
+      }
     }
 
-    this.spaces.set(connection.id, {
-      id: connection.id,
+    return false;
+  }
+
+  getConnectionId(connection: SavedConnection) {
+    if (this.hasConnection(connection)) {
+      return connection.id;
+    }
+
+    if (!this.spaces.has(connection.id)) {
+      return connection.id;
+    }
+
+    return crypto.randomUUID();
+  }
+
+  async addSpace(connection: SavedConnection, connect: boolean = false) {
+    const connectionId = this.getConnectionId(connection);
+
+    if (this.spaces.has(connectionId)) {
+      return connectionId;
+    }
+
+    this.spaces.set(connectionId, {
+      id: connectionId,
       config: connection,
       databases: [],
       tables: [],
@@ -169,10 +194,12 @@ export class AppState {
     });
 
     if (!connect) {
-      return;
+      return connectionId;
     }
 
-    this.connectSpace(connection.id);
+    await this.connectSpace(connectionId);
+
+    return connectionId;
   }
 
   async removeSpace(connectionId: string) {
@@ -186,7 +213,7 @@ export class AppState {
       throw new Error("Space not found");
     }
 
-    if (space.status === "connecting") {
+    if (space.status === "connecting" || space.status === "connected") {
       return;
     }
 
@@ -201,33 +228,48 @@ export class AppState {
         }
       }
 
-      const promise = connectDb(connection);
+      const promise = connectDb(connectionId, connection);
 
       if (connection.ssh_enabled) {
         const key = this.generateTunnelKey(connection);
         this.tunnels.set(key, promise);
       }
 
-      space.status = "connecting";
+      this.spaces.set(connectionId, {
+        ...space,
+        status: "connecting",
+      });
 
       await promise;
 
-      this.tunnels.delete(this.generateTunnelKey(connection));
+      if (connection.ssh_enabled) {
+        this.tunnels.delete(this.generateTunnelKey(connection));
+      }
 
       const [databases, tables] = await Promise.all([
         listDatabases(connectionId),
         listTables(connectionId),
       ]);
 
-      space.databases = databases;
-      space.tables = tables;
-      space.status = "connected";
+      this.spaces.set(connectionId, {
+        ...space,
+        databases: databases,
+        tables: tables,
+        status: "connected",
+      });
     } catch (error) {
-      space.status = "error";
+      this.spaces.set(connectionId, {
+        ...space,
+        status: "error",
+      });
     }
   }
 
   private generateTunnelKey(connection: SavedConnection): string {
+    if (!connection.ssh_enabled) {
+      return "";
+    }
+
     return (
       connection.ssh_host +
       "::" +

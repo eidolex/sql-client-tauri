@@ -10,12 +10,7 @@
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import {
-    connectDb,
-    listDatabases,
-    listTables,
-    type SavedConnection,
-  } from "$lib/db";
+  import { type SavedConnection } from "$lib/db";
   import { getAppState } from "$lib/stores/state.svelte";
   import { getConnectionState } from "$lib/stores/connection.state.svelte";
   import { Database, Plug, Save } from "lucide-svelte";
@@ -86,11 +81,9 @@
     loading = true;
     error = "";
     try {
-      // const connectionId = await connectDb(formData);
-
+      const connectionId = appState.getConnectionId(formData);
       appState.addSpace({ ...formData });
-
-      goto(`/${formData.id}`);
+      goto(`/${connectionId}`);
     } catch (e: any) {
       error = e.message || "Failed to connect";
     } finally {

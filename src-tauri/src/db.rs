@@ -32,9 +32,10 @@ impl From<sqlx::Error> for DatabaseError {
 
 #[tauri::command]
 pub async fn connect_db(
+    connection_id: String,
     connection_config: SavedConnection,
     state: State<'_, AppState>,
-) -> Result<String, DatabaseError> {
+) -> Result<(), DatabaseError> {
     // 1. Handle SSH Tunnel if enabled
     let mut db_host = connection_config.host.clone();
     let mut db_port = connection_config.port;
@@ -109,7 +110,6 @@ pub async fn connect_db(
         }
     };
 
-    let connection_id = uuid::Uuid::new_v4().to_string();
     let connection = DbConnection {
         provider,
         _ssh_tunnel: ssh_tunnel,
@@ -119,9 +119,9 @@ pub async fn connect_db(
         .connections
         .lock()
         .unwrap()
-        .insert(connection_id.clone(), connection);
+        .insert(connection_id, connection);
 
-    Ok(connection_id)
+    Ok(())
 }
 
 #[tauri::command]

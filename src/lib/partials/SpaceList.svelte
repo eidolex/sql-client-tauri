@@ -25,7 +25,7 @@
   async function closeConnection(connectionId: string) {
     try {
       await disconnectDb(connectionId);
-      appState.removeConnection(connectionId);
+      appState.removeSpace(connectionId);
     } catch (e) {
       console.error("Failed to disconnect", e);
     }
@@ -34,29 +34,29 @@
 
 <ScrollArea class="flex-1 w-full">
   <div class="flex flex-col items-center gap-3 w-full px-2">
-    {#each appState.activeConnections as connection (connection.id)}
+    {#each appState.spaces.values() as space (space.id)}
       <ContextMenu.Root>
         <ContextMenu.Trigger>
           <Button
-            variant={isSpaceRoute && paramsId === connection.id
+            variant={isSpaceRoute && paramsId === space.id
               ? "default"
               : "ghost"}
             size="icon"
             class={cn(
               "w-12 h-12 rounded-xl transition-all duration-200 relative group",
-              isSpaceRoute && paramsId === connection.id
+              isSpaceRoute && paramsId === space.id
                 ? "bg-primary text-primary-foreground hover:bg-primary/90"
                 : "bg-muted/50 hover:bg-muted"
             )}
-            href={`/${connection.id}`}
-            title={connection.config.name}
+            href={`/${space.id}`}
+            title={space.config.name}
           >
             <span class="font-bold text-sm">
-              {getInitials(connection.config.name)}
+              {getInitials(space.config.name)}
             </span>
 
             <!-- Active Indicator -->
-            {#if isSpaceRoute && paramsId === connection.id}
+            {#if isSpaceRoute && paramsId === space.id}
               <div
                 class="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-8 bg-foreground rounded-r-full"
               ></div>
@@ -66,7 +66,7 @@
         <ContextMenu.Content>
           <ContextMenu.Item
             class="text-destructive focus:text-destructive"
-            onclick={() => closeConnection(connection.id)}
+            onclick={() => closeConnection(space.id)}
           >
             <LogOut class="mr-2 h-4 w-4" />
             Close Connection
