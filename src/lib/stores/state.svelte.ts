@@ -18,10 +18,9 @@ export interface ActiveConnection {
   status: "initial" | "connecting" | "connected" | "error";
 }
 export class AppState {
-  spaces = new SvelteMap<string, ActiveConnection>();
-  tunnels = new SvelteMap<string, Promise<unknown>>();
+  spaces = $state<ActiveConnection[]>([]);
+  tunnels = new Map<string, Promise<unknown>>();
   tabs = new SvelteMap<string, TableTabState>();
-  // This now tracks the globally selected connection (top level tab)
   selectedConnectionId = $state<string | null>(null);
 
   constructor() {}
@@ -53,31 +52,21 @@ export class AppState {
     if (!this.tabs.has(connectionId)) {
       return;
     }
-    const space = this.spaces.get(connectionId);
+
+    const space = this.spaces.find((s) => s.id === connectionId);
 
     if (!space) {
       return;
     }
 
-    this.spaces.set(connectionId, { ...space, activeTabId: tabId });
+    space.activeTabId = tabId;
   }
-
-  // updateTab(connectionId: string, tab: Tab) {
-  //   if (!this.tabs.has(connectionId)) {
-  //     return;
-  //   }
-  //   const tabs = this.tabs.get(connectionId) || [];
-  //   this.tabs.set(
-  //     connectionId,
-  //     tabs.map((t) => (t.id === tab.id ? tab : t))
-  //   );
-  // }
 
   hasConnection(connection: SavedConnection) {
     const tunnelKey = this.generateTunnelKey(connection);
     const newKey = `${tunnelKey}::${connection.host}::${connection.port}::${connection.username}::${connection.database}`;
 
-    for (const space of this.spaces.values()) {
+    for (const space of this.spaces) {
       const spaceTunnelKey = this.generateTunnelKey(space.config);
       const spaceKey = `${spaceTunnelKey}::${space.config.host}::${space.config.port}::${space.config.username}::${space.currentDatabase}`;
       if (spaceKey === newKey) {
@@ -93,7 +82,9 @@ export class AppState {
       return connection.id;
     }
 
-    if (!this.spaces.has(connection.id)) {
+    const space = this.spaces.find((s) => s.id === connection.id);
+
+    if (!space) {
       return connection.id;
     }
 
@@ -103,11 +94,13 @@ export class AppState {
   async addSpace(connection: SavedConnection, connect: boolean = false) {
     const connectionId = this.getConnectionId(connection);
 
-    if (this.spaces.has(connectionId)) {
-      return connectionId;
+    const space = this.spaces.find((s) => s.id === connectionId);
+
+    if (space) {
+      return space.id;
     }
 
-    this.spaces.set(connectionId, {
+    this.spaces.push({
       id: connectionId,
       config: connection,
       databases: [],
@@ -126,13 +119,13 @@ export class AppState {
   }
 
   removeSpace(connectionId: string) {
-    this.spaces.delete(connectionId);
+    this.spaces = this.spaces.filter((s) => s.id !== connectionId);
     this.tabs.delete(connectionId);
-    return this.spaces.keys().toArray().at(-1) ?? null;
+    return this.spaces.at(-1)?.id ?? null;
   }
 
   async connectSpace(connectionId: string) {
-    const space = this.spaces.get(connectionId);
+    const space = this.spaces.find((s) => s.id === connectionId);
 
     if (!space) {
       throw new Error("Space not found");
@@ -160,10 +153,12 @@ export class AppState {
         this.tunnels.set(key, promise);
       }
 
-      this.spaces.set(connectionId, {
-        ...space,
-        status: "connecting",
-      });
+      space.status = "connecting";
+
+      // this.spaces.set(connectionId, {
+      //   ...space,
+      //   status: "connecting",
+      // });
 
       await promise;
 
@@ -176,17 +171,18 @@ export class AppState {
         listTables(connectionId),
       ]);
 
-      this.spaces.set(connectionId, {
-        ...space,
-        databases: databases,
-        tables: tables,
-        status: "connected",
-      });
+      space.databases = databases;
+      space.tables = tables;
+      space.status = "connected";
+
+      // this.spaces.set(connectionId, {
+      //   ...space,
+      //   databases: databases,
+      //   tables: tables,
+      //   status: "connected",
+      // });
     } catch (error) {
-      this.spaces.set(connectionId, {
-        ...space,
-        status: "error",
-      });
+      space.status = "error";
     }
   }
 

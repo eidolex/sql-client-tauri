@@ -7,33 +7,28 @@
   import { cn } from "$lib/utils";
   import { goto } from "$app/navigation";
 
-  let { spaceId }: { spaceId: string } = $props();
+  let { space }: { space: ActiveConnection } = $props();
 
   const appState = getAppState();
-
-  // When the selected connection changes, we might want to reset or restore expanded state
-  // For now, let's just keep it simple.
-
-  let currentSpace = $derived(spaceId ? appState.spaces.get(spaceId) : null);
 
   function openTable(table: string) {
     // Check if tab already exists
     const existingTab = appState.tabs
-      .get(spaceId)
+      .get(space.id)
       ?.items.find(
         (t) =>
           (t.type === "data" || t.type === "structure") && t.table === table
       );
 
     if (existingTab) {
-      appState.selectTab(spaceId, existingTab.id);
+      appState.selectTab(space.id, existingTab.id);
     } else {
-      appState.addTab(spaceId, {
+      appState.addTab(space.id, {
         id: crypto.randomUUID(),
         title: table,
         type: "data",
-        connectionId: spaceId,
-        database: currentSpace!.currentDatabase,
+        connectionId: space.id,
+        database: space.currentDatabase,
         table: table,
         page: 1,
         pageSize: 50,
@@ -43,7 +38,7 @@
   }
 
   function openSqlEditor(space: ActiveConnection) {
-    appState.addTab(spaceId, {
+    appState.addTab(space.id, {
       id: crypto.randomUUID(),
       title: `Query: ${space.config.name}`,
       type: "query",
@@ -74,10 +69,10 @@
   }
 
   async function closeCurrentConnection() {
-    if (currentSpace) {
+    if (space) {
       try {
-        await disconnectDb(currentSpace.id);
-        appState.removeSpace(currentSpace.id);
+        await disconnectDb(space.id);
+        appState.removeSpace(space.id);
       } catch (e) {
         console.error("Failed to disconnect", e);
       }
@@ -86,7 +81,7 @@
 </script>
 
 <div class="w-64 bg-muted/30 h-full flex flex-col border-r">
-  {#if !currentSpace}
+  {#if !space}
     <!-- Home / No Connection Selected -->
     <div class="p-4 border-b font-semibold flex items-center gap-2">
       <Database class="h-5 w-5" />
@@ -98,11 +93,8 @@
   {:else}
     <!-- Active Connection Context -->
     <div class="p-4 border-b flex items-center justify-between group">
-      <div
-        class="font-semibold truncate text-sm"
-        title={currentSpace.config.name}
-      >
-        {currentSpace.config.name}
+      <div class="font-semibold truncate text-sm" title={space.config.name}>
+        {space.config.name}
       </div>
       <Button
         variant="ghost"
@@ -123,17 +115,17 @@
           Databases
         </div>
 
-        {#each currentSpace.databases as db}
+        {#each space.databases as db}
           <div class="mb-1">
             <Button
               variant="ghost"
               class={cn(
                 "w-full justify-start h-8 px-2 text-sm font-normal",
-                currentSpace.currentDatabase === db
+                space.currentDatabase === db
                   ? "text-primary font-medium bg-primary/10 hover:bg-primary/20"
                   : "text-muted-foreground"
               )}
-              onclick={() => switchDatabase(currentSpace!, db)}
+              onclick={() => switchDatabase(space, db)}
             >
               <!-- {#if connectingDatabases.has(`${currentSpace.id}-${db}`)}
                 <LoaderCircle class="mr-2 h-3.5 w-3.5 animate-spin" />
@@ -141,24 +133,24 @@
               <Database class="mr-2 h-3.5 w-3.5" />
               <!-- {/if} -->
               <span class="truncate flex-1 text-left">{db}</span>
-              {#if currentSpace.currentDatabase === db}
+              {#if space.currentDatabase === db}
                 <div class="w-1.5 h-1.5 rounded-full bg-primary ml-auto"></div>
               {/if}
             </Button>
 
             <!-- Show tables if this is the active database -->
-            {#if currentSpace.currentDatabase === db}
+            {#if space.currentDatabase === db}
               <div class="ml-4 mt-1 border-l pl-2 space-y-0.5">
                 <Button
                   variant="ghost"
                   class="w-full justify-start h-7 px-2 text-sm text-muted-foreground"
-                  onclick={() => openSqlEditor(currentSpace!)}
+                  onclick={() => openSqlEditor(space)}
                 >
                   <Terminal class="mr-2 h-3.5 w-3.5" />
                   <span>SQL Editor</span>
                 </Button>
 
-                {#each currentSpace.tables as table}
+                {#each space.tables as table}
                   <Button
                     variant="ghost"
                     class="w-full justify-start h-7 px-2 text-sm text-muted-foreground font-normal"

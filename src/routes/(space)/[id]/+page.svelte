@@ -7,21 +7,20 @@
   import DataViewer from "$lib/partials/space/DataViewer.svelte";
   import StructureViewer from "$lib/partials/space/StructureViewer.svelte";
 
+  const appState = getAppState();
   const { params }: PageProps = $props();
 
   const spaceId = $derived(params.id);
-
-  const appState = getAppState();
+  const space = $derived(appState.spaces.find((s) => s.id === spaceId));
 
   $effect(() => {
-    appState.connectSpace(spaceId);
+    if (space && space.status === "initial") {
+      appState.connectSpace(space.id);
+    }
   });
 
   let currentConnectionTabs = $derived(
     spaceId ? (appState.tabs.get(spaceId)?.items ?? []) : []
-  );
-  let activeTabId = $derived(
-    spaceId ? (appState.spaces.get(spaceId)?.activeTabId ?? null) : null
   );
 
   function closeTab(id: string, e: Event) {
@@ -33,9 +32,9 @@
     // Check for Cmd+W (macOS) or Ctrl+W (Windows/Linux)
     if (e.key === "w" && (e.metaKey || e.ctrlKey)) {
       // Only close tab if there's an active tab
-      if (activeTabId) {
+      if (space?.activeTabId) {
         e.preventDefault(); // Prevent default browser behavior
-        appState.closeTab(spaceId, activeTabId);
+        appState.closeTab(space.id, space.activeTabId);
       }
     }
   }
@@ -43,7 +42,9 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<TableList spaceId={params.id} />
+{#if space}
+  <TableList {space} />
+{/if}
 
 <main class="flex-1 h-full overflow-hidden bg-background relative">
   <div class="h-full w-full flex flex-col bg-background">
@@ -61,11 +62,15 @@
           <button
             class={cn(
               "group px-4 py-2 text-sm font-medium border-r flex items-center gap-2 min-w-[140px] max-w-60 h-10 transition-colors relative",
-              activeTabId === tab.id
+              space?.activeTabId === tab.id
                 ? "bg-background text-foreground border-t-2 border-t-primary"
                 : "bg-muted/10 text-muted-foreground hover:bg-muted/30 border-t-2 border-t-transparent"
             )}
-            onclick={() => appState.selectTab(spaceId, tab.id)}
+            onclick={() => {
+              if (space) {
+                space.activeTabId = tab.id;
+              }
+            }}
           >
             {#if tab.type === "data"}
               <Database class="h-4 w-4 text-blue-500" />
@@ -78,7 +83,7 @@
             <div
               class={cn(
                 "opacity-0 group-hover:opacity-100 rounded-sm p-0.5 hover:bg-destructive/10 hover:text-destructive transition-all",
-                activeTabId === tab.id && "opacity-100"
+                space?.activeTabId === tab.id && "opacity-100"
               )}
               onclick={(e) => closeTab(tab.id, e)}
               role="button"
@@ -94,7 +99,7 @@
 
     <!-- Content Area -->
     <div class="flex-1 overflow-hidden relative">
-      {#if !activeTabId}
+      {#if !space?.activeTabId}
         <div
           class="flex flex-col items-center justify-center h-full text-muted-foreground gap-4"
         >
@@ -116,7 +121,7 @@
         {#each currentConnectionTabs as tab (tab.id)}
           <div
             class="absolute inset-0 bg-background"
-            class:hidden={activeTabId !== tab.id}
+            class:hidden={space?.activeTabId !== tab.id}
           >
             {#if tab.type === "data"}
               <DataViewer {tab} />
