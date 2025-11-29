@@ -38,7 +38,7 @@ pub fn run() {
             connection_manager::load_connections,
             connection_manager::delete_connection
         ])
-        .on_window_event(|window, event| {
+        .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Prevent the window from closing
                 api.prevent_close();
