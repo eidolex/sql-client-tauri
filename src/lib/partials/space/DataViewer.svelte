@@ -227,7 +227,7 @@
                   bind:value={filter.field}
                 >
                   {#each tab.columns || [] as col}
-                    <option value={col}>{col}</option>
+                    <option value={col.column_name}>{col.column_name}</option>
                   {/each}
                 </select>
               </div>
