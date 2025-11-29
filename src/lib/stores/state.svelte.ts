@@ -1,5 +1,11 @@
 import { getContext, setContext } from "svelte";
-import type { SavedConnection } from "../db";
+import {
+  connectDb,
+  listDatabases,
+  listTables,
+  type SavedConnection,
+} from "../db";
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
 export interface ActiveConnection {
   id: string; // The runtime connection ID returned by backend
@@ -8,6 +14,7 @@ export interface ActiveConnection {
   tables: string[];
   currentDatabase: string;
   activeTabId?: string; // Track the active tab for this connection
+  status: "initial" | "connecting" | "connected" | "error";
 }
 
 export interface Tab {
@@ -27,6 +34,9 @@ export interface Tab {
 }
 
 export class AppState {
+  spaces = new SvelteMap<string, ActiveConnection>();
+  tunnels = new SvelteMap<string, Promise<unknown>>();
+
   activeConnections = $state<ActiveConnection[]>([]);
   tabs = $state<Tab[]>([]);
   // This now tracks the globally selected connection (top level tab)
@@ -142,6 +152,89 @@ export class AppState {
         // But for now let's keep it and let the user refresh/fail
       }
     });
+  }
+
+  async addSpace(connection: SavedConnection, connect: boolean = false) {
+    if (this.spaces.has(connection.id)) {
+      return;
+    }
+
+    this.spaces.set(connection.id, {
+      id: connection.id,
+      config: connection,
+      databases: [],
+      tables: [],
+      currentDatabase: connection.database,
+      status: "initial",
+    });
+
+    if (!connect) {
+      return;
+    }
+
+    this.connectSpace(connection.id);
+  }
+
+  async removeSpace(connectionId: string) {
+    this.spaces.delete(connectionId);
+  }
+
+  async connectSpace(connectionId: string) {
+    const space = this.spaces.get(connectionId);
+
+    if (!space) {
+      throw new Error("Space not found");
+    }
+
+    if (space.status === "connecting") {
+      return;
+    }
+
+    const connection = space.config;
+
+    try {
+      if (connection.ssh_enabled) {
+        const key = this.generateTunnelKey(connection);
+        if (this.tunnels.has(key)) {
+          // Reuse existing tunnel promise
+          await this.tunnels.get(key);
+        }
+      }
+
+      const promise = connectDb(connection);
+
+      if (connection.ssh_enabled) {
+        const key = this.generateTunnelKey(connection);
+        this.tunnels.set(key, promise);
+      }
+
+      space.status = "connecting";
+
+      await promise;
+
+      this.tunnels.delete(this.generateTunnelKey(connection));
+
+      const [databases, tables] = await Promise.all([
+        listDatabases(connectionId),
+        listTables(connectionId),
+      ]);
+
+      space.databases = databases;
+      space.tables = tables;
+      space.status = "connected";
+    } catch (error) {
+      space.status = "error";
+    }
+  }
+
+  private generateTunnelKey(connection: SavedConnection): string {
+    return (
+      connection.ssh_host +
+      "::" +
+      connection.ssh_port +
+      "::" +
+      connection.ssh_user
+    );
   }
 }
 

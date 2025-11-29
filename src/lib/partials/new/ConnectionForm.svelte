@@ -86,24 +86,11 @@
     loading = true;
     error = "";
     try {
-      const connectionId = await connectDb(formData);
+      // const connectionId = await connectDb(formData);
 
-      // Fetch initial metadata
-      const [databases, tables] = await Promise.all([
-        listDatabases(connectionId),
-        listTables(connectionId),
-      ]);
+      appState.addSpace({ ...formData });
 
-      appState.addConnection({
-        id: connectionId,
-        config: { ...formData },
-        databases,
-        tables,
-        currentDatabase: formData.database,
-      });
-      // setTimeout(() => {
-      goto(`/${connectionId}`);
-      // }, 5000);
+      goto(`/${formData.id}`);
     } catch (e: any) {
       error = e.message || "Failed to connect";
     } finally {
