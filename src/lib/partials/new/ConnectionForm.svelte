@@ -25,7 +25,7 @@
 
   $effect(() => {
     const selected = connectionState.connections.find(
-      (c) => c.id === connectionState.selectedConnectionId
+      (c) => c.id === connectionState.selectedConnectionId,
     );
     if (selected) {
       formData = { ...selected };
@@ -126,7 +126,8 @@
               variant="outline"
               class={cn(
                 "h-auto flex-col gap-2 p-4",
-                formData.db_type === "postgres" && "border-primary bg-primary/5"
+                formData.db_type === "postgres" &&
+                  "border-primary bg-primary/5",
               )}
               onclick={() => {
                 formData.db_type = "postgres";
@@ -140,7 +141,7 @@
               variant="outline"
               class={cn(
                 "h-auto flex-col gap-2 p-4",
-                formData.db_type === "mysql" && "border-primary bg-primary/5"
+                formData.db_type === "mysql" && "border-primary bg-primary/5",
               )}
               onclick={() => {
                 formData.db_type = "mysql";
