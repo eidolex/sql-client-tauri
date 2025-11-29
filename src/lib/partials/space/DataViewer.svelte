@@ -30,7 +30,7 @@
     order: "ASC" | "DESC";
   }
 
-  let { tab }: { tab: TableTab } = $props();
+  let { tab = $bindable() }: { tab: TableTab } = $props();
 
   let loading = $state(false);
   let error = $state("");
@@ -176,7 +176,6 @@
       index: sorts.length > 1 ? index + 1 : null,
     };
   }
-  $inspect(tab);
 </script>
 
 <div class="h-full flex flex-col bg-background">

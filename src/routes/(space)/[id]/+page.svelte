@@ -6,6 +6,7 @@
   import type { PageProps } from "./$types";
   import DataViewer from "$lib/partials/space/DataViewer.svelte";
   import StructureViewer from "$lib/partials/space/StructureViewer.svelte";
+  import type { TableTab } from "$lib/stores/table-tab.state.svelte";
 
   const appState = getAppState();
   const { params }: PageProps = $props();
@@ -118,15 +119,18 @@
             </Button> -->
         </div>
       {:else}
-        {#each currentConnectionTabs as tab (tab.id)}
+        {#each currentConnectionTabs as tab, index (tab.id)}
           <div
             class="absolute inset-0 bg-background"
             class:hidden={space?.activeTabId !== tab.id}
           >
             {#if tab.type === "data"}
-              <DataViewer {tab} />
+              <DataViewer bind:tab={currentConnectionTabs[index] as TableTab} />
             {:else if tab.type === "structure"}
-              <StructureViewer spaceId={tab.connectionId} {tab} />
+              <StructureViewer
+                spaceId={tab.connectionId}
+                bind:tab={currentConnectionTabs[index] as TableTab}
+              />
               <!-- {:else if tab.type === "query"}
               <SqlEditor
                 connectionId={tab.connectionId}

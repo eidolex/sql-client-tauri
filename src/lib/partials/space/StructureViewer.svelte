@@ -11,10 +11,13 @@
   import { LoaderCircle, Table as TableIcon } from "lucide-svelte";
   import type { TableTab } from "$lib/stores/table-tab.state.svelte";
 
-  let { spaceId, tab } = $props<{
+  let {
+    spaceId,
+    tab = $bindable(),
+  }: {
     spaceId: string;
     tab: TableTab;
-  }>();
+  } = $props();
 
   let indexes = $state<IndexDefinition[]>([]);
   let loading = $state(false);
