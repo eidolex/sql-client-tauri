@@ -1,18 +1,19 @@
 use crate::connection_manager::SavedConnection;
-use crate::ssh_tunnel::SshTunnel;
+use crate::ssh_tunnel::{SshTunnel, TunnelConfig};
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{Column, Pool, Postgres, Row, TypeInfo};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, Weak};
 use tauri::State;
 
 pub struct DbConnection {
     pub pool: Pool<Postgres>,
-    pub ssh_tunnel: Option<SshTunnel>,
+    pub ssh_tunnel: Option<Arc<SshTunnel>>,
 }
 
 pub struct AppState {
     pub connections: Mutex<HashMap<String, DbConnection>>,
+    pub tunnels: Mutex<HashMap<TunnelConfig, Weak<SshTunnel>>>,
 }
 
 #[derive(serde::Serialize)]
@@ -52,29 +53,48 @@ pub async fn connect_db(
 
     if connection_config.ssh_enabled {
         if let Some(ssh_host) = &connection_config.ssh_host {
-            let (tunnel, actual_local_port) = SshTunnel::start(
-                ssh_host.clone(),
-                connection_config.ssh_port,
-                connection_config.ssh_user.clone().filter(|s| !s.is_empty()),
-                connection_config
+            let config = TunnelConfig {
+                ssh_host: ssh_host.clone(),
+                ssh_port: connection_config.ssh_port,
+                ssh_user: connection_config.ssh_user.clone().filter(|s| !s.is_empty()),
+                ssh_password: connection_config
                     .ssh_password
                     .clone()
                     .filter(|s| !s.is_empty()),
-                connection_config
+                ssh_key_path: connection_config
                     .ssh_key_path
                     .clone()
                     .filter(|s| !s.is_empty()),
-                db_host.clone(),
-                db_port,
-                0, // Use 0 to let OS pick a random port
-            )
-            .map_err(|e| DatabaseError { message: e })?;
+                remote_host: db_host.clone(),
+                remote_port: db_port,
+            };
 
-            ssh_tunnel = Some(tunnel);
+            // Check for existing tunnel
+            let mut tunnels = state.tunnels.lock().unwrap();
+            if let Some(weak_tunnel) = tunnels.get(&config) {
+                if let Some(existing_tunnel) = weak_tunnel.upgrade() {
+                    eprintln!(
+                        "Reusing existing SSH tunnel on port {}",
+                        existing_tunnel.get_local_port()
+                    );
+                    db_host = "127.0.0.1".to_string();
+                    db_port = existing_tunnel.get_local_port();
+                    ssh_tunnel = Some(existing_tunnel);
+                }
+            }
 
-            // Update connection info to point to local tunnel
-            db_host = "127.0.0.1".to_string();
-            db_port = actual_local_port;
+            if ssh_tunnel.is_none() {
+                eprintln!("Starting new SSH tunnel...");
+                let (tunnel, actual_local_port) =
+                    SshTunnel::start(config.clone()).map_err(|e| DatabaseError { message: e })?;
+
+                let tunnel_arc = Arc::new(tunnel);
+                tunnels.insert(config, Arc::downgrade(&tunnel_arc));
+
+                ssh_tunnel = Some(tunnel_arc);
+                db_host = "127.0.0.1".to_string();
+                db_port = actual_local_port;
+            }
         }
     }
 
@@ -95,9 +115,13 @@ pub async fn connect_db(
         Ok(pool) => pool,
         Err(e) => {
             // Clean up SSH process if connection fails
-            if let Some(mut tunnel) = ssh_tunnel {
-                tunnel.stop();
-            }
+            // If we created a new tunnel (ssh_tunnel is Some), dropping it here will stop it
+            // if it's the only reference.
+            // ssh_tunnel is Option<Arc<SshTunnel>>.
+            // If we inserted it into the map, the map has a Weak reference.
+            // If we drop this Arc, the strong count goes to 0, and it is dropped.
+            // The Weak reference in the map will then fail to upgrade.
+            // So we don't need to manually stop it.
             return Err(DatabaseError::from(e));
         }
     };
@@ -124,11 +148,14 @@ pub async fn disconnect_db(
         connections.remove(&connection_id)
     };
 
-    if let Some(mut conn) = conn {
+    if let Some(conn) = conn {
         conn.pool.close().await;
-        if let Some(tunnel) = &mut conn.ssh_tunnel {
-            tunnel.stop();
-        }
+        // Tunnel is automatically stopped when the last Arc is dropped
+        // We don't need to manually call stop() anymore, or we can if we want to force it,
+        // but since we are sharing it, we should NOT force stop it unless we are sure.
+        // The Drop implementation of SshTunnel calls stop().
+        // When we remove the connection from the map, the DbConnection is dropped.
+        // This drops the Arc<SshTunnel>. If it's the last one, SshTunnel is dropped and stopped.
     }
     Ok(())
 }

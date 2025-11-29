@@ -7,26 +7,36 @@ use std::time::Duration;
 
 use ssh2::Session;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TunnelConfig {
+    pub ssh_host: String,
+    pub ssh_port: Option<u16>,
+    pub ssh_user: Option<String>,
+    pub ssh_password: Option<String>,
+    pub ssh_key_path: Option<String>,
+    pub remote_host: String,
+    pub remote_port: u16,
+}
+
 pub struct SshTunnel {
     running: Arc<AtomicBool>,
     handle: Option<thread::JoinHandle<()>>,
+    local_port: u16,
+}
+
+impl Drop for SshTunnel {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 impl SshTunnel {
-    pub fn start(
-        ssh_host: String,
-        ssh_port: Option<u16>,
-        ssh_user: Option<String>,
-        ssh_password: Option<String>,
-        ssh_key_path: Option<String>,
-        remote_host: String,
-        remote_port: u16,
-        local_port: u16,
-    ) -> Result<(Self, u16), String> {
+    pub fn start(config: TunnelConfig) -> Result<(Self, u16), String> {
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
 
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", local_port))
+        // Bind to port 0 to get a random available port
+        let listener = TcpListener::bind("127.0.0.1:0")
             .map_err(|e| format!("Failed to bind local port: {}", e))?;
 
         let bound_port = listener
@@ -43,11 +53,13 @@ impl SshTunnel {
             while running_clone.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((local_stream, _)) => {
-                        let ssh_host = ssh_host.clone();
-                        let ssh_user = ssh_user.clone();
-                        let ssh_password = ssh_password.clone();
-                        let ssh_key_path = ssh_key_path.clone();
-                        let remote_host = remote_host.clone();
+                        let ssh_host = config.ssh_host.clone();
+                        let ssh_user = config.ssh_user.clone();
+                        let ssh_password = config.ssh_password.clone();
+                        let ssh_key_path = config.ssh_key_path.clone();
+                        let remote_host = config.remote_host.clone();
+                        let ssh_port = config.ssh_port;
+                        let remote_port = config.remote_port;
 
                         thread::spawn(move || {
                             if let Err(e) = handle_connection(
@@ -80,6 +92,7 @@ impl SshTunnel {
             Self {
                 running,
                 handle: Some(handle),
+                local_port: bound_port,
             },
             bound_port,
         ))
@@ -90,6 +103,10 @@ impl SshTunnel {
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }
+    }
+
+    pub fn get_local_port(&self) -> u16 {
+        self.local_port
     }
 }
 
