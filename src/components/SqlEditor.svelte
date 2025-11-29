@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { EditorView, basicSetup } from "codemirror";
-    import { sql } from "@codemirror/lang-sql";
+    import { sql, PostgreSQL } from "@codemirror/lang-sql";
     import { getDatabaseSchema, executeQuery, type QueryResult } from "$lib/db";
     import { appState } from "$lib/state.svelte";
 
@@ -20,9 +20,14 @@
     let loading = $state(false);
 
     onMount(async () => {
-        let schema = {};
+        let schema: Record<string, string[]> = {};
         try {
-            schema = await getDatabaseSchema(connectionId);
+            const dbSchema = await getDatabaseSchema(connectionId);
+            // Add * to each table's columns for autocomplete
+            for (const [table, columns] of Object.entries(dbSchema)) {
+                schema[table] = ["*", ...columns];
+            }
+            console.log("Loaded schema for autocomplete:", schema);
         } catch (e) {
             console.error("Failed to load schema for autocomplete", e);
         }
@@ -31,7 +36,7 @@
             doc: query,
             extensions: [
                 basicSetup,
-                sql({ schema }),
+                sql({ schema, dialect: PostgreSQL }),
                 EditorView.theme(
                     {
                         "&": { height: "100%", fontSize: "14px" },
