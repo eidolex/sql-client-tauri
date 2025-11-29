@@ -6,6 +6,7 @@ export interface ActiveConnection {
     databases: string[];
     tables: string[];
     currentDatabase: string;
+    activeTabId?: string; // Track the active tab for this connection
 }
 
 export interface Tab {
@@ -27,36 +28,74 @@ export interface Tab {
 export class AppState {
     activeConnections = $state<ActiveConnection[]>([]);
     tabs = $state<Tab[]>([]);
-    activeTabId = $state<string | null>(null);
+    // This now tracks the globally selected connection (top level tab)
+    selectedConnectionId = $state<string | null>(null);
+
+    // We can keep this for backward compatibility or easy access, 
+    // but the source of truth for "what is visible" depends on selectedConnectionId
+    // If selectedConnectionId is null, we are in "Home" or "New Connection" view
+    // If selectedConnectionId is set, we show tabs for that connection
+
+    // Helper to get the active tab ID for the current connection
+    get activeTabId() {
+        if (!this.selectedConnectionId) return null;
+        const conn = this.activeConnections.find(c => c.id === this.selectedConnectionId);
+        return conn?.activeTabId ?? null;
+    }
+
+    set activeTabId(id: string | null) {
+        if (this.selectedConnectionId) {
+            const conn = this.activeConnections.find(c => c.id === this.selectedConnectionId);
+            if (conn && id) {
+                conn.activeTabId = id;
+            }
+        }
+    }
 
     constructor() { }
 
     addConnection(connection: ActiveConnection) {
         this.activeConnections.push(connection);
+        this.selectedConnectionId = connection.id;
     }
 
     removeConnection(connectionId: string) {
         this.activeConnections = this.activeConnections.filter(c => c.id !== connectionId);
         // Close tabs associated with this connection
         this.tabs = this.tabs.filter(t => t.connectionId !== connectionId);
-        if (this.activeTabId && !this.tabs.find(t => t.id === this.activeTabId)) {
-            this.activeTabId = this.tabs.length > 0 ? this.tabs[this.tabs.length - 1].id : null;
+
+        if (this.selectedConnectionId === connectionId) {
+            this.selectedConnectionId = this.activeConnections.length > 0
+                ? this.activeConnections[this.activeConnections.length - 1].id
+                : null;
         }
     }
 
     addTab(tab: Tab) {
         this.tabs.push(tab);
-        this.activeTabId = tab.id;
+        // When adding a tab, make sure we switch to that connection and set it as active
+        this.selectedConnectionId = tab.connectionId;
+        const conn = this.activeConnections.find(c => c.id === tab.connectionId);
+        if (conn) {
+            conn.activeTabId = tab.id;
+        }
     }
 
     closeTab(tabId: string) {
         const index = this.tabs.findIndex(t => t.id === tabId);
         if (index !== -1) {
+            const tab = this.tabs[index];
+            const connectionId = tab.connectionId;
+
             this.tabs.splice(index, 1);
-            if (this.activeTabId === tabId) {
-                this.activeTabId = this.tabs.length > 0
-                    ? this.tabs[Math.min(index, this.tabs.length - 1)].id
-                    : null;
+
+            // If this was the active tab for its connection, switch to another one
+            const conn = this.activeConnections.find(c => c.id === connectionId);
+            if (conn && conn.activeTabId === tabId) {
+                const remainingTabs = this.tabs.filter(t => t.connectionId === connectionId);
+                conn.activeTabId = remainingTabs.length > 0
+                    ? remainingTabs[remainingTabs.length - 1].id
+                    : undefined;
             }
         }
     }
@@ -72,6 +111,10 @@ export class AppState {
             conn.currentDatabase = newDatabase;
             conn.tables = newTables;
             conn.config.database = newDatabase;
+        }
+
+        if (this.selectedConnectionId === oldId) {
+            this.selectedConnectionId = newId;
         }
 
         // Update tabs

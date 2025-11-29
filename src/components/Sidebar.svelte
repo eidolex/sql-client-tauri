@@ -8,49 +8,27 @@
         ChevronRight,
         ChevronDown,
         Plug,
+        LogOut,
     } from "lucide-svelte";
 
-    let expandedConnections = $state<Set<string>>(new Set());
-    let contextMenu = $state<{
-        visible: boolean;
-        x: number;
-        y: number;
-        connectionId: string | null;
-    }>({ visible: false, x: 0, y: 0, connectionId: null });
+    let expandedDatabases = $state<Set<string>>(new Set());
 
-    function handleContextMenu(e: MouseEvent, connectionId: string) {
-        e.preventDefault();
-        contextMenu = {
-            visible: true,
-            x: e.clientX,
-            y: e.clientY,
-            connectionId,
-        };
-    }
+    // When the selected connection changes, we might want to reset or restore expanded state
+    // For now, let's just keep it simple.
 
-    function closeContextMenu() {
-        contextMenu.visible = false;
-    }
+    let currentConnection = $derived(
+        appState.selectedConnectionId
+            ? appState.getConnection(appState.selectedConnectionId)
+            : null,
+    );
 
-    async function closeConnection() {
-        if (contextMenu.connectionId) {
-            try {
-                await disconnectDb(contextMenu.connectionId);
-                appState.removeConnection(contextMenu.connectionId);
-            } catch (e) {
-                console.error("Failed to disconnect", e);
-            }
-        }
-        closeContextMenu();
-    }
-
-    function toggleConnection(id: string) {
-        if (expandedConnections.has(id)) {
-            expandedConnections.delete(id);
+    function toggleDatabase(dbName: string) {
+        if (expandedDatabases.has(dbName)) {
+            expandedDatabases.delete(dbName);
         } else {
-            expandedConnections.add(id);
+            expandedDatabases.add(dbName);
         }
-        expandedConnections = new Set(expandedConnections);
+        expandedDatabases = new Set(expandedDatabases);
     }
 
     function openTable(connection: ActiveConnection, table: string) {
@@ -86,11 +64,21 @@
         });
     }
 
-    async function openDatabaseConnection(
+    async function switchDatabase(
         connection: ActiveConnection,
         database: string,
     ) {
-        // Check if we already have a connection to this database
+        // If we are already on this database, just toggle expansion
+        if (connection.currentDatabase === database) {
+            // It's already the active database for this connection
+            return;
+        }
+
+        // Check if we already have a separate connection for this database
+        // In this new model, "switching" a database might mean creating a NEW connection entry
+        // OR updating the current one.
+        // The user request said: "when i click the database it will create new connection or go to existing one if it already exist"
+
         const existing = appState.activeConnections.find(
             (c) =>
                 c.config.host === connection.config.host &&
@@ -99,10 +87,7 @@
         );
 
         if (existing) {
-            // Just expand it if it exists (logic to expand can be added if needed, for now just alert or ignore)
-            if (!expandedConnections.has(existing.id)) {
-                toggleConnection(existing.id);
-            }
+            appState.selectedConnectionId = existing.id;
             return;
         }
 
@@ -115,20 +100,30 @@
             const newId = await connectDb(newConfig);
             const tables = await listTables(newId);
 
-            appState.addConnection({
+            const newConnection = {
                 id: newId,
                 config: newConfig,
                 databases: connection.databases, // Reuse the list of databases
                 tables,
                 currentDatabase: database,
-            });
+            };
 
-            // Auto expand the new connection
-            expandedConnections.add(newId);
-            expandedConnections = new Set(expandedConnections);
+            appState.addConnection(newConnection);
+            // addConnection already sets selectedConnectionId
         } catch (e) {
             console.error("Failed to open database connection", e);
             alert("Failed to open database connection: " + e);
+        }
+    }
+
+    async function closeCurrentConnection() {
+        if (currentConnection) {
+            try {
+                await disconnectDb(currentConnection.id);
+                appState.removeConnection(currentConnection.id);
+            } catch (e) {
+                console.error("Failed to disconnect", e);
+            }
         }
     }
 </script>
@@ -136,132 +131,89 @@
 <div
     class="w-64 bg-gray-900 text-white h-full flex flex-col border-r border-gray-800"
 >
-    <div class="p-4 border-b border-gray-800 font-bold flex items-center gap-2">
-        <Database size={20} />
-        <span>Explorer</span>
-    </div>
-
-    <div class="flex-1 overflow-y-auto p-2">
-        {#each appState.activeConnections as connection (connection.id)}
-            <div class="mb-2">
-                <button
-                    class="w-full flex items-center gap-2 px-2 py-1 hover:bg-gray-800 rounded text-sm font-medium"
-                    onclick={() => toggleConnection(connection.id)}
-                    oncontextmenu={(e) => handleContextMenu(e, connection.id)}
-                >
-                    {#if expandedConnections.has(connection.id)}
-                        <ChevronDown size={14} />
-                    {:else}
-                        <ChevronRight size={14} />
-                    {/if}
-                    <Plug size={14} class="text-blue-400" />
-                    <span class="truncate">{connection.config.name}</span>
-                </button>
-
-                {#if expandedConnections.has(connection.id)}
-                    <div class="ml-4 mt-1 border-l border-gray-800 pl-2">
-                        <div
-                            class="text-xs text-gray-500 uppercase font-semibold mb-1 px-2"
-                        >
-                            Databases
-                        </div>
-                        {#each connection.databases as db}
-                            <div class="mb-1">
-                                <div
-                                    class="w-full flex items-center gap-2 px-2 py-1 rounded text-sm"
-                                    class:text-blue-400={connection.currentDatabase ===
-                                        db}
-                                    class:text-gray-400={connection.currentDatabase !==
-                                        db}
-                                    onclick={() =>
-                                        openDatabaseConnection(connection, db)}
-                                    role="button"
-                                    tabindex="0"
-                                    onkeydown={(e) =>
-                                        e.key === "Enter" &&
-                                        openDatabaseConnection(connection, db)}
-                                    class:cursor-pointer={connection.currentDatabase !==
-                                        db}
-                                    class:hover:bg-gray-800={connection.currentDatabase !==
-                                        db}
-                                >
-                                    <Database size={12} />
-                                    <span class="truncate">{db}</span>
-                                    {#if connection.currentDatabase === db}
-                                        <span
-                                            class="text-xs text-green-500 ml-auto"
-                                            >Active</span
-                                        >
-                                    {/if}
-                                </div>
-
-                                {#if connection.currentDatabase === db}
-                                    <div class="ml-4 mt-1">
-                                        {#each connection.tables as table}
-                                            <button
-                                                class="w-full text-left px-2 py-1 rounded hover:bg-gray-800 text-sm flex items-center gap-2"
-                                                onclick={() =>
-                                                    openTable(
-                                                        connection,
-                                                        table,
-                                                    )}
-                                            >
-                                                <Table
-                                                    size={14}
-                                                    class="text-gray-400"
-                                                />
-                                                <span class="truncate"
-                                                    >{table}</span
-                                                >
-                                            </button>
-                                        {/each}
-                                    </div>
-                                {/if}
-                            </div>
-                        {/each}
-
-                        <button
-                            class="w-full flex items-center gap-2 px-2 py-1 mt-2 hover:bg-gray-800 rounded text-sm text-gray-400"
-                            onclick={() => openSqlEditor(connection)}
-                        >
-                            <Terminal size={14} />
-                            <span>SQL Editor</span>
-                        </button>
-                    </div>
-                {/if}
-            </div>
-        {/each}
-
-        {#if appState.activeConnections.length === 0}
-            <div class="text-center text-gray-500 mt-10 text-sm">
-                No active connections.
-                <br />
-                Create a new connection to start.
-            </div>
-        {/if}
-    </div>
-
-    <!-- Context Menu -->
-    {#if contextMenu.visible}
+    {#if !currentConnection}
+        <!-- Home / No Connection Selected -->
         <div
-            class="fixed z-50 bg-gray-800 border border-gray-700 rounded shadow-lg py-1 min-w-[150px]"
-            style="top: {contextMenu.y}px; left: {contextMenu.x}px;"
+            class="p-4 border-b border-gray-800 font-bold flex items-center gap-2"
         >
-            <button
-                class="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 text-red-400 flex items-center gap-2"
-                onclick={closeConnection}
+            <Database size={20} />
+            <span>Explorer</span>
+        </div>
+        <div class="p-4 text-sm text-gray-400">
+            Select a connection from the left bar or create a new one.
+        </div>
+    {:else}
+        <!-- Active Connection Context -->
+        <div
+            class="p-4 border-b border-gray-800 flex items-center justify-between group"
+        >
+            <div
+                class="font-bold truncate"
+                title={currentConnection.config.name}
             >
-                <Plug size={14} class="rotate-45" />
-                Close Connection
+                {currentConnection.config.name}
+            </div>
+            <button
+                class="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                onclick={closeCurrentConnection}
+                title="Close Connection"
+            >
+                <LogOut size={16} />
             </button>
         </div>
-        <!-- Backdrop to close menu -->
-        <div
-            class="fixed inset-0 z-40 bg-transparent"
-            onclick={closeContextMenu}
-            role="button"
-            tabindex="-1"
-            onkeydown={(e) => e.key === "Escape" && closeContextMenu()}
-        ></div>
+
+        <div class="flex-1 overflow-y-auto p-2">
+            <div
+                class="text-xs text-gray-500 uppercase font-semibold mb-2 px-2"
+            >
+                Databases
+            </div>
+
+            {#each currentConnection.databases as db}
+                <div class="mb-1">
+                    <button
+                        class="w-full flex items-center gap-2 px-2 py-1 rounded text-sm hover:bg-gray-800 text-left"
+                        class:text-blue-400={currentConnection.currentDatabase ===
+                            db}
+                        class:font-medium={currentConnection.currentDatabase ===
+                            db}
+                        class:text-gray-400={currentConnection.currentDatabase !==
+                            db}
+                        onclick={() => switchDatabase(currentConnection!, db)}
+                    >
+                        <Database size={14} />
+                        <span class="truncate flex-1">{db}</span>
+                        {#if currentConnection.currentDatabase === db}
+                            <div class="w-2 h-2 rounded-full bg-blue-500"></div>
+                        {/if}
+                    </button>
+
+                    <!-- Show tables if this is the active database -->
+                    {#if currentConnection.currentDatabase === db}
+                        <div class="ml-4 mt-1 border-l border-gray-800 pl-2">
+                            <button
+                                class="w-full flex items-center gap-2 px-2 py-1 mb-1 hover:bg-gray-800 rounded text-sm text-gray-400"
+                                onclick={() =>
+                                    openSqlEditor(currentConnection!)}
+                            >
+                                <Terminal size={14} />
+                                <span>SQL Editor</span>
+                            </button>
+
+                            {#each currentConnection.tables as table}
+                                <button
+                                    class="w-full text-left px-2 py-1 rounded hover:bg-gray-800 text-sm flex items-center gap-2 text-gray-300"
+                                    onclick={() =>
+                                        openTable(currentConnection!, table)}
+                                >
+                                    <Table size={14} class="text-gray-500" />
+                                    <span class="truncate">{table}</span>
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/each}
+        </div>
     {/if}
 </div>
