@@ -31,4 +31,5 @@ ipnetwork = { version = "0.20", features = ["serde"] }
 ssh2 = { version = "0.9", features = ["vendored-openssl"] }
 ssh2-config = "0.6.2"
 dirs = "6.0.0"
+tauri-plugin-dialog = "2.4.2"
 

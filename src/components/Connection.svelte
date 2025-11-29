@@ -19,6 +19,7 @@
     Database,
     Plus,
   } from "lucide-svelte";
+  import { ask } from "@tauri-apps/plugin-dialog";
 
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -121,7 +122,15 @@
   }
 
   async function remove(id: string) {
-    if (!confirm("Are you sure you want to delete this connection?")) return;
+    const confirmed = await ask(
+      "Are you sure you want to delete this connection?",
+      {
+        title: "Delete Connection",
+        kind: "warning",
+      },
+    );
+    if (!confirmed) return;
+
     try {
       await deleteConnection(id);
       await loadSaved();
@@ -188,17 +197,16 @@
                 {conn.username}@{conn.host}:{conn.port}
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              class="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+            <button
+              type="button"
+              class="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive inline-flex items-center justify-center rounded-md transition-colors hover:bg-accent"
               onclick={(e) => {
                 e.stopPropagation();
                 remove(conn.id);
               }}
             >
               <Trash2 class="h-3 w-3" />
-            </Button>
+            </button>
           </div>
         {/each}
       </div>
