@@ -10,7 +10,14 @@
   } from "$lib/db";
   import { appState } from "$lib/state.svelte";
   import { onMount } from "svelte";
-  import { Trash2, Save, Plug, ChevronDown, ChevronRight } from "lucide-svelte";
+  import {
+    Trash2,
+    Save,
+    Plug,
+    ChevronDown,
+    ChevronRight,
+    Database,
+  } from "lucide-svelte";
 
   let connections = $state<SavedConnection[]>([]);
   let selectedConnectionId = $state<string | null>(null);
@@ -52,6 +59,18 @@
     currentConnection = { ...conn };
     selectedConnectionId = conn.id;
     showSshConfig = conn.ssh_enabled;
+  }
+
+  function handleDbTypeChange() {
+    if (currentConnection.db_type === "postgres") {
+      currentConnection.port = 5432;
+      currentConnection.username = "postgres";
+      currentConnection.database = "postgres";
+    } else if (currentConnection.db_type === "mysql") {
+      currentConnection.port = 3306;
+      currentConnection.username = "root";
+      currentConnection.database = "mysql";
+    }
   }
 
   function createNew() {
@@ -203,14 +222,35 @@
               class="block text-sm font-medium text-gray-400 mb-1"
               >Database Type</label
             >
-            <select
-              id="id_connection_type"
-              bind:value={currentConnection.db_type}
-              class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-            >
-              <option value="postgres">PostgreSQL</option>
-              <option value="mysql">MySQL</option>
-            </select>
+            <div class="grid grid-cols-2 gap-4">
+              <button
+                class="flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all {currentConnection.db_type ===
+                'postgres'
+                  ? 'border-blue-500 bg-blue-900/20 text-blue-400'
+                  : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:bg-gray-800'}"
+                onclick={() => {
+                  currentConnection.db_type = "postgres";
+                  handleDbTypeChange();
+                }}
+              >
+                <Database class="w-8 h-8 mb-2" />
+                <span class="font-medium">PostgreSQL</span>
+              </button>
+
+              <button
+                class="flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all {currentConnection.db_type ===
+                'mysql'
+                  ? 'border-orange-500 bg-orange-900/20 text-orange-400'
+                  : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:bg-gray-800'}"
+                onclick={() => {
+                  currentConnection.db_type = "mysql";
+                  handleDbTypeChange();
+                }}
+              >
+                <Database class="w-8 h-8 mb-2" />
+                <span class="font-medium">MySQL</span>
+              </button>
+            </div>
           </div>
 
           <div class="grid grid-cols-3 gap-4">
