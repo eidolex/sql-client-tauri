@@ -4,9 +4,12 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-mod connection_manager;
-mod db;
-mod ssh_tunnel;
+pub mod connection_manager;
+pub mod database_provider;
+pub mod db;
+pub mod mysql_provider;
+pub mod postgres_provider;
+pub mod ssh_tunnel;
 
 use db::AppState;
 use std::collections::HashMap;

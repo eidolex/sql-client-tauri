@@ -13,12 +13,18 @@ pub struct SavedConnection {
     pub username: String,
     pub password: Option<String>,
     pub database: String,
+    #[serde(default = "default_db_type")]
+    pub db_type: String,
     pub ssh_enabled: bool,
     pub ssh_host: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_user: Option<String>,
     pub ssh_password: Option<String>,
     pub ssh_key_path: Option<String>,
+}
+
+fn default_db_type() -> String {
+    "postgres".to_string()
 }
 
 fn get_connections_file_path(app_handle: &AppHandle) -> PathBuf {

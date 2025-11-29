@@ -23,6 +23,7 @@
     username: "postgres",
     password: "",
     database: "postgres",
+    db_type: "postgres",
     ssh_enabled: false,
     ssh_host: "",
     ssh_port: 22,
@@ -62,6 +63,7 @@
       username: "postgres",
       password: "",
       database: "postgres",
+      db_type: "postgres",
       ssh_enabled: false,
       ssh_host: "",
       ssh_port: 22,
@@ -193,6 +195,22 @@
               spellcheck="false"
               autocorrect="off"
             />
+          </div>
+
+          <div>
+            <label
+              for="id_connection_type"
+              class="block text-sm font-medium text-gray-400 mb-1"
+              >Database Type</label
+            >
+            <select
+              id="id_connection_type"
+              bind:value={currentConnection.db_type}
+              class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="postgres">PostgreSQL</option>
+              <option value="mysql">MySQL</option>
+            </select>
           </div>
 
           <div class="grid grid-cols-3 gap-4">

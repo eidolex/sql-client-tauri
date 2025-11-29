@@ -1,13 +1,14 @@
 use crate::connection_manager::SavedConnection;
+use crate::database_provider::DatabaseProvider;
+use crate::mysql_provider::MysqlProvider;
+use crate::postgres_provider::PostgresProvider;
 use crate::ssh_tunnel::{SshTunnel, TunnelConfig};
-use sqlx::postgres::{PgPoolOptions, PgRow};
-use sqlx::{Column, Pool, Postgres, Row, TypeInfo};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 use tauri::State;
 
 pub struct DbConnection {
-    pub pool: Pool<Postgres>,
+    pub provider: Arc<dyn DatabaseProvider + Send + Sync>,
     pub _ssh_tunnel: Option<Arc<SshTunnel>>,
 }
 
@@ -16,9 +17,9 @@ pub struct AppState {
     pub tunnels: Mutex<HashMap<TunnelConfig, Weak<SshTunnel>>>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Debug)]
 pub struct DatabaseError {
-    message: String,
+    pub message: String,
 }
 
 impl From<sqlx::Error> for DatabaseError {
@@ -27,18 +28,6 @@ impl From<sqlx::Error> for DatabaseError {
             message: err.to_string(),
         }
     }
-}
-
-// Helper to get pool
-fn get_pool(
-    state: &State<'_, AppState>,
-    connection_id: &str,
-) -> Result<Pool<Postgres>, DatabaseError> {
-    let connections = state.connections.lock().unwrap();
-    let conn = connections.get(connection_id).ok_or(DatabaseError {
-        message: "Connection not found".to_string(),
-    })?;
-    Ok(conn.pool.clone())
 }
 
 #[tauri::command]
@@ -98,37 +87,31 @@ pub async fn connect_db(
         }
     }
 
-    // 2. Construct Connection String
+    // 2. Construct Connection String and Connect
     let password = connection_config.password.as_deref().unwrap_or("");
-    let connection_string = format!(
-        "postgres://{}:{}@{}:{}/{}",
-        connection_config.username, password, db_host, db_port, connection_config.database
-    );
 
-    // 3. Connect to Database
-    let pool_result = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&connection_string)
-        .await;
-
-    let pool = match pool_result {
-        Ok(pool) => pool,
-        Err(e) => {
-            // Clean up SSH process if connection fails
-            // If we created a new tunnel (ssh_tunnel is Some), dropping it here will stop it
-            // if it's the only reference.
-            // ssh_tunnel is Option<Arc<SshTunnel>>.
-            // If we inserted it into the map, the map has a Weak reference.
-            // If we drop this Arc, the strong count goes to 0, and it is dropped.
-            // The Weak reference in the map will then fail to upgrade.
-            // So we don't need to manually stop it.
-            return Err(DatabaseError::from(e));
+    let provider: Arc<dyn DatabaseProvider + Send + Sync> = match connection_config.db_type.as_str()
+    {
+        "mysql" => {
+            let connection_string = format!(
+                "mysql://{}:{}@{}:{}/{}",
+                connection_config.username, password, db_host, db_port, connection_config.database
+            );
+            Arc::new(MysqlProvider::new(&connection_string).await?)
+        }
+        _ => {
+            // Default to Postgres
+            let connection_string = format!(
+                "postgres://{}:{}@{}:{}/{}",
+                connection_config.username, password, db_host, db_port, connection_config.database
+            );
+            Arc::new(PostgresProvider::new(&connection_string).await?)
         }
     };
 
     let connection_id = uuid::Uuid::new_v4().to_string();
     let connection = DbConnection {
-        pool,
+        provider,
         _ssh_tunnel: ssh_tunnel,
     };
 
@@ -152,13 +135,7 @@ pub async fn disconnect_db(
     };
 
     if let Some(conn) = conn {
-        conn.pool.close().await;
-        // Tunnel is automatically stopped when the last Arc is dropped
-        // We don't need to manually call stop() anymore, or we can if we want to force it,
-        // but since we are sharing it, we should NOT force stop it unless we are sure.
-        // The Drop implementation of SshTunnel calls stop().
-        // When we remove the connection from the map, the DbConnection is dropped.
-        // This drops the Arc<SshTunnel>. If it's the last one, SshTunnel is dropped and stopped.
+        conn.provider.close().await;
     }
     Ok(())
 }
@@ -168,14 +145,14 @@ pub async fn list_databases(
     connection_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, DatabaseError> {
-    let pool = get_pool(&state, &connection_id)?;
-
-    let rows = sqlx::query("SELECT datname FROM pg_database WHERE datistemplate = false;")
-        .fetch_all(&pool)
-        .await?;
-
-    let databases: Vec<String> = rows.iter().map(|row| row.get("datname")).collect();
-    Ok(databases)
+    let provider = {
+        let connections = state.connections.lock().unwrap();
+        let conn = connections.get(&connection_id).ok_or(DatabaseError {
+            message: "Connection not found".to_string(),
+        })?;
+        conn.provider.clone()
+    };
+    provider.list_databases().await
 }
 
 #[tauri::command]
@@ -183,138 +160,34 @@ pub async fn list_tables(
     connection_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, DatabaseError> {
-    let pool = get_pool(&state, &connection_id)?;
-
-    let rows = sqlx::query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';",
-    )
-    .fetch_all(&pool)
-    .await?;
-
-    let tables: Vec<String> = rows
-        .iter()
-        .map(|row: &PgRow| row.get("table_name"))
-        .collect();
-    Ok(tables)
+    let provider = {
+        let connections = state.connections.lock().unwrap();
+        let conn = connections.get(&connection_id).ok_or(DatabaseError {
+            message: "Connection not found".to_string(),
+        })?;
+        conn.provider.clone()
+    };
+    provider.list_tables().await
 }
 
 #[derive(serde::Serialize)]
 pub struct QueryResult {
-    columns: Vec<String>,
-    rows: Vec<Vec<serde_json::Value>>,
-    total_rows: Option<i64>,
-}
-
-fn row_to_values(row: PgRow) -> Vec<serde_json::Value> {
-    let mut values = Vec::new();
-    for col in row.columns() {
-        let col_name = col.name();
-        let type_info = col.type_info();
-        let type_name = type_info.name();
-
-        let value = match type_name {
-            "BOOL" => {
-                let val: Option<bool> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "INT2" | "INT4" | "INT" => {
-                let val: Option<i32> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "INT8" | "BIGINT" => {
-                let val: Option<i64> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "FLOAT4" | "REAL" => {
-                let val: Option<f32> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "FLOAT8" | "DOUBLE PRECISION" => {
-                let val: Option<f64> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "VARCHAR" | "TEXT" | "BPCHAR" | "NAME" | "UNKNOWN" => {
-                let val: Option<String> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "TIMESTAMP" | "Timestamp" => {
-                let val: Option<chrono::NaiveDateTime> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "TIMESTAMPTZ" | "Timestamptz" => {
-                let val: Option<chrono::DateTime<chrono::Utc>> =
-                    row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "UUID" | "Uuid" => {
-                let val: Option<uuid::Uuid> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "JSON" | "JSONB" => {
-                let val: Option<serde_json::Value> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "INET" | "inet" | "CIDR" | "cidr" => {
-                let val: Option<ipnetwork::IpNetwork> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "DATE" | "Date" => {
-                let val: Option<chrono::NaiveDate> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            "TIME" | "Time" => {
-                let val: Option<chrono::NaiveTime> = row.try_get(col_name).unwrap_or(None);
-                serde_json::json!(val)
-            }
-            _ => {
-                // Try to get as String for anything else
-                if let Ok(val) = row.try_get::<String, _>(col_name) {
-                    serde_json::Value::String(val)
-                } else {
-                    serde_json::Value::String(format!("Unsupported Type: {}", type_name))
-                }
-            }
-        };
-        values.push(value);
-    }
-    values
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub total_rows: Option<i64>,
 }
 
 #[derive(serde::Deserialize, Debug)]
 pub struct Filter {
-    field: String,
-    operator: String,
-    value: String,
-}
-
-// Helper to get column types
-async fn get_column_types(
-    pool: &Pool<Postgres>,
-    table_name: &str,
-) -> Result<HashMap<String, String>, DatabaseError> {
-    let rows = sqlx::query(
-        "SELECT column_name, data_type, udt_name 
-         FROM information_schema.columns 
-         WHERE table_name = $1",
-    )
-    .bind(table_name)
-    .fetch_all(pool)
-    .await?;
-
-    let mut types = HashMap::new();
-    for row in rows {
-        let column_name: String = row.get("column_name");
-        // Use udt_name as it's often more specific (e.g. 'uuid' vs 'USER-DEFINED')
-        let data_type: String = row.get("udt_name");
-        types.insert(column_name, data_type);
-    }
-    Ok(types)
+    pub field: String,
+    pub operator: String,
+    pub value: String,
 }
 
 #[derive(serde::Deserialize, Debug)]
 pub struct Sort {
-    field: String,
-    order: String,
+    pub field: String,
+    pub order: String,
 }
 
 #[tauri::command]
@@ -327,193 +200,26 @@ pub async fn get_table_data(
     sorts: Vec<Sort>,
     state: State<'_, AppState>,
 ) -> Result<QueryResult, DatabaseError> {
-    let pool = get_pool(&state, &connection_id)?;
-
-    // Get column types for casting
-    let column_types = get_column_types(&pool, &table_name).await?;
-
-    // WARNING: SQL Injection risk. Validate table_name in production.
-
-    // Build WHERE clause
-    let mut where_clauses = Vec::new();
-    let mut query_params = Vec::new();
-    let mut param_index = 1;
-
-    for filter in &filters {
-        // Basic SQL injection prevention for field names (should be more robust in prod)
-        if !filter
-            .field
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_')
-        {
-            continue;
-        }
-
-        let field = format!("\"{}\"", filter.field);
-        let col_type = column_types
-            .get(&filter.field)
-            .map(|s| s.as_str())
-            .unwrap_or("text");
-
-        // Helper to add cast if needed
-        let cast_suffix = match col_type {
-            "uuid" => "::uuid",
-            "int2" | "int4" | "int8" | "float4" | "float8" | "numeric" => {
-                match filter.operator.as_str() {
-                    // For numeric types, we might need casting if the input is string,
-                    // but Postgres often handles string-to-number implicitly if it looks like a number.
-                    // However, explicit casting is safer.
-                    _ => "",
-                }
-            }
-            "date" => "::date",
-            "timestamp" | "timestamptz" => match col_type {
-                "timestamp" => "::timestamp",
-                "timestamptz" => "::timestamptz",
-                _ => "",
-            },
-            "bool" => "::boolean",
-            _ => "",
-        };
-
-        // For LIKE/ILIKE, we usually want to cast the column to text, not the parameter to column type
-        // But for =, >, <, etc, we want to cast the parameter to the column type.
-
-        match filter.operator.as_str() {
-            "=" => {
-                where_clauses.push(format!("{} = ${}{}", field, param_index, cast_suffix));
-                query_params.push(filter.value.clone());
-                param_index += 1;
-            }
-            ">=" => {
-                where_clauses.push(format!("{} >= ${}{}", field, param_index, cast_suffix));
-                query_params.push(filter.value.clone());
-                param_index += 1;
-            }
-            "<=" => {
-                where_clauses.push(format!("{} <= ${}{}", field, param_index, cast_suffix));
-                query_params.push(filter.value.clone());
-                param_index += 1;
-            }
-            ">" => {
-                where_clauses.push(format!("{} > ${}{}", field, param_index, cast_suffix));
-                query_params.push(filter.value.clone());
-                param_index += 1;
-            }
-            "<" => {
-                where_clauses.push(format!("{} < ${}{}", field, param_index, cast_suffix));
-                query_params.push(filter.value.clone());
-                param_index += 1;
-            }
-            "contain" => {
-                // For text search, cast column to text
-                where_clauses.push(format!("{}::text ILIKE ${}", field, param_index));
-                query_params.push(format!("%{}%", filter.value));
-                param_index += 1;
-            }
-            "start with" => {
-                where_clauses.push(format!("{}::text ILIKE ${}", field, param_index));
-                query_params.push(format!("{}%", filter.value));
-                param_index += 1;
-            }
-            "end with" => {
-                where_clauses.push(format!("{}::text ILIKE ${}", field, param_index));
-                query_params.push(format!("%{}", filter.value));
-                param_index += 1;
-            }
-            "not null" => {
-                where_clauses.push(format!("{} IS NOT NULL", field));
-            }
-            "is null" => {
-                where_clauses.push(format!("{} IS NULL", field));
-            }
-            _ => {}
-        }
-    }
-
-    let where_sql = if where_clauses.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", where_clauses.join(" AND "))
+    let provider = {
+        let connections = state.connections.lock().unwrap();
+        let conn = connections.get(&connection_id).ok_or(DatabaseError {
+            message: "Connection not found".to_string(),
+        })?;
+        conn.provider.clone()
     };
-
-    // Build ORDER BY clause
-    let mut order_clauses = Vec::new();
-    for sort in &sorts {
-        if !sort.field.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            continue;
-        }
-        let direction = if sort.order.to_uppercase() == "DESC" {
-            "DESC"
-        } else {
-            "ASC"
-        };
-        order_clauses.push(format!("\"{}\" {}", sort.field, direction));
-    }
-
-    let order_sql = if order_clauses.is_empty() {
-        String::new()
-    } else {
-        format!("ORDER BY {}", order_clauses.join(", "))
-    };
-
-    // Get total count
-    let count_query = format!("SELECT COUNT(*) FROM \"{}\" {}", table_name, where_sql);
-    let mut count_q = sqlx::query_as::<_, (i64,)>(&count_query);
-    for param in &query_params {
-        count_q = count_q.bind(param);
-    }
-    let count_row = count_q.fetch_one(&pool).await?;
-    let total_rows = count_row.0;
-
-    // Get data with pagination
-    let query = format!(
-        "SELECT * FROM \"{}\" {} {} LIMIT ${} OFFSET ${}",
-        table_name,
-        where_sql,
-        order_sql,
-        param_index,
-        param_index + 1
-    );
-
-    let mut q = sqlx::query(&query);
-    for param in &query_params {
-        q = q.bind(param);
-    }
-    q = q.bind(limit).bind(offset);
-
-    let rows = q.fetch_all(&pool).await?;
-
-    let columns = if let Some(first_row) = rows.first() {
-        first_row
-            .columns()
-            .iter()
-            .map(|col| col.name().to_string())
-            .collect()
-    } else {
-        // If no rows, we might want to get columns from structure, but for now empty is fine
-        // or we could keep previous columns if we had them.
-        // For now, let's just return empty columns if no data.
-        Vec::new()
-    };
-
-    let result_rows: Vec<Vec<serde_json::Value>> = rows.into_iter().map(row_to_values).collect();
-
-    Ok(QueryResult {
-        columns,
-        rows: result_rows,
-        total_rows: Some(total_rows),
-    })
+    provider
+        .get_table_data(table_name, limit, offset, filters, sorts)
+        .await
 }
 
 #[derive(serde::Serialize)]
 pub struct ColumnDefinition {
-    column_name: String,
-    data_type: String,
-    is_nullable: String,
-    column_default: Option<String>,
-    comment: Option<String>,
-    foreign_key: Option<String>,
+    pub column_name: String,
+    pub data_type: String,
+    pub is_nullable: String,
+    pub column_default: Option<String>,
+    pub comment: Option<String>,
+    pub foreign_key: Option<String>,
 }
 
 #[tauri::command]
@@ -522,72 +228,25 @@ pub async fn get_table_structure(
     table_name: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ColumnDefinition>, DatabaseError> {
-    let pool = get_pool(&state, &connection_id)?;
-
-    // Query to get detailed column information including exact type, default, comment, and FKs
-    let query = "
-        SELECT 
-            a.attname AS column_name,
-            format_type(a.atttypid, a.atttypmod) AS data_type,
-            CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable,
-            pg_get_expr(d.adbin, d.adrelid) AS column_default,
-            col_description(a.attrelid, a.attnum) AS comment,
-            (
-                SELECT 
-                    confrelid::regclass::text || '(' || a2.attname || ')'
-                FROM pg_constraint c
-                JOIN pg_attribute a2 ON a2.attnum = c.confkey[1] AND a2.attrelid = c.confrelid
-                WHERE c.conrelid = a.attrelid 
-                  AND c.contype = 'f' 
-                  AND c.conkey[1] = a.attnum
-                LIMIT 1
-            ) AS foreign_key
-        FROM pg_attribute a
-        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-        WHERE a.attrelid = $1::regclass
-          AND a.attnum > 0 
-          AND NOT a.attisdropped
-        ORDER BY a.attnum;
-    ";
-
-    let table_oid_str = if table_name.contains('.') {
-        table_name.clone()
-    } else {
-        format!("public.\"{}\"", table_name)
-    };
-
-    let rows = sqlx::query(query)
-        .bind(&table_oid_str)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| DatabaseError {
-            message: format!("Failed to get structure for {}: {}", table_name, e),
+    let provider = {
+        let connections = state.connections.lock().unwrap();
+        let conn = connections.get(&connection_id).ok_or(DatabaseError {
+            message: "Connection not found".to_string(),
         })?;
-
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(ColumnDefinition {
-            column_name: row.get("column_name"),
-            data_type: row.get("data_type"),
-            is_nullable: row.get("is_nullable"),
-            column_default: row.get("column_default"),
-            comment: row.get("comment"),
-            foreign_key: row.get("foreign_key"),
-        });
-    }
-
-    Ok(results)
+        conn.provider.clone()
+    };
+    provider.get_table_structure(table_name).await
 }
 
 #[derive(serde::Serialize)]
 pub struct IndexDefinition {
-    index_name: String,
-    index_algorithm: String,
-    is_unique: bool,
-    is_primary: bool,
-    column_names: String,
-    condition: Option<String>,
-    comment: Option<String>,
+    pub index_name: String,
+    pub index_algorithm: String,
+    pub is_unique: bool,
+    pub is_primary: bool,
+    pub column_names: String,
+    pub condition: Option<String>,
+    pub comment: Option<String>,
 }
 
 #[tauri::command]
@@ -596,57 +255,14 @@ pub async fn get_table_indexes(
     table_name: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<IndexDefinition>, DatabaseError> {
-    let pool = get_pool(&state, &connection_id)?;
-
-    let table_oid_str = if table_name.contains('.') {
-        table_name.clone()
-    } else {
-        format!("public.\"{}\"", table_name)
-    };
-
-    let query = "
-        SELECT 
-            i.relname AS index_name,
-            am.amname AS index_algorithm,
-            ix.indisunique AS is_unique,
-            ix.indisprimary AS is_primary,
-            pg_get_indexdef(ix.indexrelid, 0, true) AS full_def,
-            pg_get_expr(ix.indpred, ix.indrelid) AS condition,
-            obj_description(i.oid, 'pg_class') AS comment,
-            (
-                SELECT string_agg(a.attname, ', ' ORDER BY array_position(ix.indkey, a.attnum))
-                FROM pg_attribute a
-                WHERE a.attrelid = ix.indrelid AND a.attnum = ANY(ix.indkey)
-            ) as column_names
-        FROM pg_index ix
-        JOIN pg_class i ON i.oid = ix.indexrelid
-        JOIN pg_am am ON am.oid = i.relam
-        WHERE ix.indrelid = $1::regclass
-        ORDER BY ix.indisprimary DESC, i.relname;
-    ";
-
-    let rows = sqlx::query(query)
-        .bind(&table_oid_str)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| DatabaseError {
-            message: format!("Failed to get indexes for {}: {}", table_name, e),
+    let provider = {
+        let connections = state.connections.lock().unwrap();
+        let conn = connections.get(&connection_id).ok_or(DatabaseError {
+            message: "Connection not found".to_string(),
         })?;
-
-    let mut results = Vec::new();
-    for row in rows {
-        results.push(IndexDefinition {
-            index_name: row.get("index_name"),
-            index_algorithm: row.get("index_algorithm"),
-            is_unique: row.get("is_unique"),
-            is_primary: row.get("is_primary"),
-            column_names: row.get("column_names"),
-            condition: row.get("condition"),
-            comment: row.get("comment"),
-        });
-    }
-
-    Ok(results)
+        conn.provider.clone()
+    };
+    provider.get_table_indexes(table_name).await
 }
 
 #[tauri::command]
@@ -655,32 +271,14 @@ pub async fn execute_query(
     query: String,
     state: State<'_, AppState>,
 ) -> Result<QueryResult, DatabaseError> {
-    let pool = get_pool(&state, &connection_id)?;
-
-    // This is for SELECT queries. For others, we might need execute().
-    // Assuming the user wants to see results.
-    // If it's not a SELECT, fetch_all might return empty or error depending on the query.
-    // Ideally we check if it starts with SELECT.
-
-    let rows = sqlx::query(&query).fetch_all(&pool).await?;
-
-    let columns = if let Some(first_row) = rows.first() {
-        first_row
-            .columns()
-            .iter()
-            .map(|col| col.name().to_string())
-            .collect()
-    } else {
-        Vec::new()
+    let provider = {
+        let connections = state.connections.lock().unwrap();
+        let conn = connections.get(&connection_id).ok_or(DatabaseError {
+            message: "Connection not found".to_string(),
+        })?;
+        conn.provider.clone()
     };
-
-    let result_rows: Vec<Vec<serde_json::Value>> = rows.into_iter().map(row_to_values).collect();
-
-    Ok(QueryResult {
-        columns,
-        rows: result_rows,
-        total_rows: None,
-    })
+    provider.execute_query(query).await
 }
 
 #[tauri::command]
@@ -688,26 +286,12 @@ pub async fn get_database_schema(
     connection_id: String,
     state: State<'_, AppState>,
 ) -> Result<std::collections::HashMap<String, Vec<String>>, DatabaseError> {
-    let pool = get_pool(&state, &connection_id)?;
-
-    let rows = sqlx::query(
-        "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public';",
-    )
-    .fetch_all(&pool)
-    .await?;
-
-    let mut schema: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
-
-    for row in rows {
-        let table_name: String = row.get("table_name");
-        let column_name: String = row.get("column_name");
-
-        schema
-            .entry(table_name)
-            .or_insert_with(Vec::new)
-            .push(column_name);
-    }
-
-    Ok(schema)
+    let provider = {
+        let connections = state.connections.lock().unwrap();
+        let conn = connections.get(&connection_id).ok_or(DatabaseError {
+            message: "Connection not found".to_string(),
+        })?;
+        conn.provider.clone()
+    };
+    provider.get_database_schema().await
 }

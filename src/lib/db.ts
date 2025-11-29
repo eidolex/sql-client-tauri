@@ -12,6 +12,7 @@ export interface SavedConnection {
     username: string;
     password?: string;
     database: string;
+    db_type: 'postgres' | 'mysql';
     ssh_enabled: boolean;
     ssh_host?: string;
     ssh_port?: number;
