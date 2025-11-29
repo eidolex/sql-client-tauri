@@ -40,7 +40,20 @@
   );
 
   let activeTabId = $derived(appState.activeTabId);
+
+  function handleKeydown(e: KeyboardEvent) {
+    // Check for Cmd+W (macOS) or Ctrl+W (Windows/Linux)
+    if (e.key === "w" && (e.metaKey || e.ctrlKey)) {
+      // Only close tab if there's an active tab
+      if (activeTabId) {
+        e.preventDefault(); // Prevent default browser behavior
+        appState.closeTab(activeTabId);
+      }
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="h-full w-full flex flex-col bg-background">
   <!-- Second Level: Tab Bar (Only if a connection is selected) -->
