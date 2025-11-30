@@ -55,10 +55,10 @@
                 : "bg-muted/50 hover:bg-muted"
             )}
             href={`/${space.id}`}
-            title={space.config.name}
+            title={space.name}
           >
             <span class="font-bold text-sm">
-              {getInitials(space.config.name)}
+              {getInitials(space.name)}
             </span>
 
             <!-- Active Indicator -->

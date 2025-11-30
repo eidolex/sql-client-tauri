@@ -10,13 +10,14 @@
   import { Badge } from "$lib/components/ui/badge";
   import { LoaderCircle, Table as TableIcon } from "lucide-svelte";
   import type { TableTab } from "$lib/stores/table-tab.state.svelte";
+  import type { WorkSpace } from "$lib/stores/work-space.state.svelte";
 
   let {
-    spaceId,
+    space,
     tab = $bindable(),
   }: {
-    spaceId: string;
-    tab: TableTab;
+    space: WorkSpace;
+    tab: TableTab<"structure">;
   } = $props();
 
   let indexes = $state<IndexDefinition[]>([]);
@@ -24,7 +25,11 @@
   let error = $state("");
 
   $effect(() => {
-    if (spaceId && tab) {
+    if (space.status !== "connected") {
+      return;
+    }
+
+    if (tab) {
       untrack(() => loadStructure());
     }
   });
@@ -34,16 +39,18 @@
     error = "";
     indexes = [];
     try {
-      const promises: Promise<any>[] = [getTableIndexes(spaceId, tab.table)];
+      const promises: Promise<any>[] = [
+        getTableIndexes(space.id, tab.data.table),
+      ];
 
-      if (!tab.columns) {
-        promises.push(getTableStructure(spaceId, tab.table));
+      if (!tab.data.columns) {
+        promises.push(getTableStructure(space.id, tab.data.table));
       }
 
       const responses = await Promise.all(promises);
       indexes = responses[0];
       if (responses[1]) {
-        tab.columns = responses[1];
+        tab.data.columns = responses[1];
       }
     } catch (e: any) {
       error = e.message || "Failed to load structure";
@@ -57,14 +64,14 @@
   <div class="p-4 border-b flex justify-between items-center bg-muted/10">
     <h2 class="text-lg font-semibold flex items-center gap-2">
       <span class="text-muted-foreground">Structure:</span>
-      {tab.table}
+      {tab.data.table}
     </h2>
     <div class="flex gap-2">
       <Button
         variant="outline"
         size="sm"
         onclick={() => {
-          tab.type = "data";
+          tab.type = "data" as Exclude<typeof tab.type, "query">;
           // appState.updateTab(spaceId, {
           //   ...tab,
           //   page: tab.page || 1,
@@ -94,7 +101,7 @@
       >
         Error: {error}
       </div>
-    {:else if tab.columns?.length === 0}
+    {:else if tab.data.columns?.length === 0}
       <div
         class="flex items-center justify-center h-full text-muted-foreground"
       >
@@ -114,7 +121,7 @@
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {#each tab.columns as col}
+            {#each tab.data.columns || [] as col}
               <Table.Row>
                 <Table.Cell class="font-mono text-primary"
                   >{col.column_name}</Table.Cell

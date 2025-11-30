@@ -1,56 +1,49 @@
 <script lang="ts">
-  import { getAppState, type ActiveConnection } from "$lib/stores/state.svelte";
-  import { disconnectDb } from "$lib/db";
   import { Database, Table, Terminal, LogOut } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { cn } from "$lib/utils";
   import { goto } from "$app/navigation";
-
-  let { space }: { space: ActiveConnection } = $props();
+  import type { WorkSpace } from "$lib/stores/work-space.state.svelte";
+  import { getAppState } from "$lib/stores/state.svelte";
 
   const appState = getAppState();
 
-  function openTable(table: string) {
-    // Check if tab already exists
-    const existingTab = appState.tabs
-      .get(space.id)
-      ?.items.find(
-        (t) =>
-          (t.type === "data" || t.type === "structure") && t.table === table
-      );
+  const { space }: { space: WorkSpace } = $props();
 
-    if (existingTab) {
-      appState.selectTab(space.id, existingTab.id);
-    } else {
-      appState.addTab(space.id, {
-        id: crypto.randomUUID(),
-        title: table,
-        type: "data",
-        connectionId: space.id,
-        database: space.currentDatabase,
+  function openTable(table: string) {
+    appState.addTab({
+      id: crypto.randomUUID(),
+      title: table,
+      connectionId: space.id,
+      database: space.currentDatabase,
+      type: "data",
+      active: true,
+      data: {
         table: table,
         page: 1,
         pageSize: 50,
         totalRows: 0,
-      });
-    }
-  }
-
-  function openSqlEditor(space: ActiveConnection) {
-    appState.addTab(space.id, {
-      id: crypto.randomUUID(),
-      title: `Query: ${space.config.name}`,
-      type: "query",
-      connectionId: space.id,
-      database: space.currentDatabase,
+      },
     });
   }
 
-  async function switchDatabase(space: ActiveConnection, database: string) {
-    // If we are already on this database, just toggle expansion
+  function openSqlEditor(space: WorkSpace) {
+    appState.addTab({
+      id: crypto.randomUUID(),
+      title: `Query: ${space.name}`,
+      type: "query",
+      connectionId: space.id,
+      database: space.currentDatabase,
+      active: true,
+      data: {
+        query: "",
+      },
+    });
+  }
+
+  async function switchDatabase(space: WorkSpace, database: string) {
     if (space.currentDatabase === database) {
-      // It's already the active database for this connection
       return;
     }
 
@@ -58,25 +51,23 @@
       ...space.config,
       database: database,
     };
-
     if (appState.hasConnection(newConnection)) {
       goto(`/${appState.getConnectionId(newConnection)}`);
       return;
     }
-
     const connectionId = await appState.addSpace(newConnection);
     goto(`/${connectionId}`);
   }
 
   async function closeCurrentConnection() {
-    if (space) {
-      try {
-        await disconnectDb(space.id);
-        appState.removeSpace(space.id);
-      } catch (e) {
-        console.error("Failed to disconnect", e);
-      }
-    }
+    // if (space) {
+    //   try {
+    //     await disconnectDb(space.id);
+    //     appState.removeSpace(space.id);
+    //   } catch (e) {
+    //     console.error("Failed to disconnect", e);
+    //   }
+    // }
   }
 </script>
 
@@ -93,8 +84,8 @@
   {:else}
     <!-- Active Connection Context -->
     <div class="p-4 border-b flex items-center justify-between group">
-      <div class="font-semibold truncate text-sm" title={space.config.name}>
-        {space.config.name}
+      <div class="font-semibold truncate text-sm" title={space.name}>
+        {space.name}
       </div>
       <Button
         variant="ghost"

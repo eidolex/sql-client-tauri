@@ -18,6 +18,7 @@
   import { Badge } from "$lib/components/ui/badge";
   import { Card } from "$lib/components/ui/card";
   import type { TableTab } from "$lib/stores/table-tab.state.svelte";
+  import type { WorkSpace } from "$lib/stores/work-space.state.svelte";
 
   interface Filter {
     field: string;
@@ -30,7 +31,10 @@
     order: "ASC" | "DESC";
   }
 
-  let { tab = $bindable() }: { tab: TableTab } = $props();
+  let {
+    tab = $bindable(),
+    space,
+  }: { tab: TableTab<"data">; space: WorkSpace } = $props();
 
   let loading = $state(false);
   let error = $state("");
@@ -38,31 +42,41 @@
   let filters = $state<Filter[]>([]);
   let sorts = $state<Sort[]>([]);
 
-  let columns = $derived(tab.columns?.map((c) => c.column_name) || []);
+  let columns = $derived(tab.data.columns?.map((c) => c.column_name) || []);
 
   // Initialize defaults if missing
 
   let totalPages = $derived(
-    Math.ceil((tab.totalRows || 0) / (tab.pageSize || 50)) || 1
+    Math.ceil((tab.data.totalRows || 0) / (tab.data.pageSize || 50)) || 1
   );
 
   $effect(() => {
-    if (tab.table && (!tab.columns || tab.columns.length === 0)) {
+    if (space.status !== "connected") {
+      return;
+    }
+
+    if (
+      tab.data.table &&
+      (!tab.data.columns || tab.data.columns.length === 0)
+    ) {
       untrack(() => loadStructure());
     }
 
     // Load data if empty or if explicit refresh needed (we can add a timestamp later if needed)
     // Only load if data is undefined (never loaded)
-    if (tab.data === undefined && !loading && !error) {
+    if (tab.data.rows === undefined && !loading && !error) {
       untrack(() => loadData());
     }
   });
 
   async function loadStructure() {
-    if (!tab.table) return;
+    if (!tab.data.table) return;
     try {
-      const structure = await getTableStructure(tab.connectionId, tab.table);
-      tab.columns = structure;
+      const structure = await getTableStructure(
+        tab.connectionId,
+        tab.data.table
+      );
+      tab.data.columns = structure;
     } catch (e) {
       console.error("Failed to load structure", e);
     }
@@ -70,29 +84,29 @@
 
   function handlePageChange(newPage: number) {
     if (newPage >= 1 && newPage <= totalPages) {
-      tab.page = newPage;
+      tab.data.page = newPage;
       loadData();
     }
   }
 
   async function loadData() {
-    if (!tab.table) return;
+    if (!tab.data.table) return;
 
     loading = true;
     error = "";
     try {
-      const offset = ((tab.page || 1) - 1) * (tab.pageSize || 50);
+      const offset = ((tab.data.page || 1) - 1) * (tab.data.pageSize || 50);
       const result = await getTableData(
         tab.connectionId,
-        tab.table,
-        tab.pageSize || 50,
+        tab.data.table,
+        tab.data.pageSize || 50,
         offset,
         filters,
         sorts
       );
 
-      tab.data = result.rows;
-      tab.totalRows = result.total_rows || 0;
+      tab.data.rows = result.rows;
+      tab.data.totalRows = result.total_rows || 0;
     } catch (e: any) {
       error = e.message || "Failed to load data";
     } finally {
@@ -118,9 +132,9 @@
   }
 
   function addFilter() {
-    if (tab.columns && tab.columns.length > 0) {
+    if (tab.data.columns && tab.data.columns.length > 0) {
       filters.push({
-        field: tab.columns[0].column_name,
+        field: tab.data.columns[0].column_name,
         operator: "=",
         value: "",
       });
@@ -132,7 +146,7 @@
   }
 
   function applyFilters() {
-    tab.page = 1; // Reset to first page when filtering
+    tab.data.page = 1; // Reset to first page when filtering
     loadData();
   }
 
@@ -183,7 +197,7 @@
     <div class="flex justify-between items-center">
       <h2 class="text-lg font-semibold flex items-center gap-2">
         <span class="text-muted-foreground">Table:</span>
-        {tab.table}
+        {tab.data.table}
       </h2>
       <div class="flex gap-2">
         <Button
@@ -208,7 +222,7 @@
           variant="outline"
           size="sm"
           onclick={() => {
-            tab.type = "structure";
+            tab.type = "structure" as Exclude<typeof tab.type, "query">;
           }}
         >
           Structure
@@ -226,7 +240,7 @@
                   class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   bind:value={filter.field}
                 >
-                  {#each tab.columns || [] as col}
+                  {#each tab.data.columns || [] as col}
                     <option value={col.column_name}>{col.column_name}</option>
                   {/each}
                 </select>
@@ -292,7 +306,7 @@
         >
           Error: {error}
         </div>
-      {:else if !tab.columns || tab.columns.length === 0}
+      {:else if !tab.data.columns || tab.data.columns.length === 0}
         {#if loading}
           <div
             class="flex flex-col items-center justify-center h-full text-muted-foreground gap-2"
@@ -338,7 +352,7 @@
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {#if loading && (!tab.data || tab.data.length === 0)}
+              {#if loading && (!tab.data.rows || tab.data.rows.length === 0)}
                 <Table.Row>
                   <Table.Cell colspan={columns.length} class="h-24 text-center">
                     <div
@@ -349,7 +363,7 @@
                     </div>
                   </Table.Cell>
                 </Table.Row>
-              {:else if !tab.data || tab.data.length === 0}
+              {:else if !tab.data.rows || tab.data.rows.length === 0}
                 <Table.Row>
                   <Table.Cell
                     colspan={columns.length}
@@ -359,9 +373,9 @@
                   </Table.Cell>
                 </Table.Row>
               {:else}
-                {#each tab.data || [] as row}
+                {#each tab.data.rows || [] as row}
                   <Table.Row>
-                    {#each row as cell}
+                    {#each row as cell, j}
                       <Table.Cell
                         class="max-w-xs truncate"
                         title={formatCell(cell)}
@@ -382,7 +396,7 @@
           </Table.Root>
         </div>
 
-        {#if loading && tab.data && tab.data.length > 0}
+        {#if loading && tab.data.rows && tab.data.rows.length > 0}
           <div
             class="absolute inset-0 bg-background/50 flex items-center justify-center z-20 backdrop-blur-[1px]"
           >
@@ -403,28 +417,31 @@
         class="flex justify-between items-center p-4 border-t bg-muted/10 text-sm text-muted-foreground"
       >
         <div>
-          Showing {((tab.page || 1) - 1) * (tab.pageSize || 50) + 1} to
-          {Math.min((tab.page || 1) * (tab.pageSize || 50), tab.totalRows || 0)}
-          of {tab.totalRows} rows
+          Showing {((tab.data.page || 1) - 1) * (tab.data.pageSize || 50) + 1} to
+          {Math.min(
+            (tab.data.page || 1) * (tab.data.pageSize || 50),
+            tab.data.totalRows || 0
+          )}
+          of {tab.data.totalRows} rows
         </div>
         <div class="flex gap-2 items-center">
           <Button
             variant="outline"
             size="sm"
-            disabled={tab.page === 1}
-            onclick={() => handlePageChange((tab.page || 1) - 1)}
+            disabled={tab.data.page === 1}
+            onclick={() => handlePageChange((tab.data.page || 1) - 1)}
           >
             <ChevronLeft class="h-4 w-4 mr-1" />
             Previous
           </Button>
           <span class="min-w-20 text-center"
-            >Page {tab.page} of {totalPages}</span
+            >Page {tab.data.page} of {totalPages}</span
           >
           <Button
             variant="outline"
             size="sm"
-            disabled={tab.page === totalPages}
-            onclick={() => handlePageChange((tab.page || 1) + 1)}
+            disabled={tab.data.page === totalPages}
+            onclick={() => handlePageChange((tab.data.page || 1) + 1)}
           >
             Next
             <ChevronRight class="h-4 w-4 ml-1" />

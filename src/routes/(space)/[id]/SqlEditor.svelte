@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { untrack } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
   import { sql, PostgreSQL } from "@codemirror/lang-sql";
   import { getDatabaseSchema, executeQuery, type QueryResult } from "$lib/db";
@@ -7,25 +7,33 @@
   import * as Resizable from "$lib/components/ui/resizable";
   import * as Table from "$lib/components/ui/table";
   import { Play, LoaderCircle } from "lucide-svelte";
-  import { getAppState } from "$lib/stores/state.svelte";
+  import type { TableTab } from "$lib/stores/table-tab.state.svelte";
 
-  const appState = getAppState();
-
-  let { connectionId, initialQuery } = $props<{
+  let {
+    connectionId,
+    tab = $bindable(),
+  }: {
     connectionId: string;
-    initialQuery?: string;
-  }>();
+    tab: TableTab<"query">;
+  } = $props();
 
   let element: HTMLElement;
   let view: EditorView;
-  let query = $state(
-    initialQuery || "SELECT * FROM information_schema.tables;"
-  );
+  let query = $state("");
   let result = $state<QueryResult>({ columns: [], rows: [] });
   let error = $state("");
   let loading = $state(false);
 
-  onMount(async () => {
+  $effect(() => {
+    if (tab) {
+      untrack(() => load());
+    }
+    return () => {
+      view?.destroy();
+    };
+  });
+
+  async function load() {
     let schema: Record<string, string[]> = {};
     try {
       const dbSchema = await getDatabaseSchema(connectionId);
@@ -57,18 +65,11 @@
         view.update([tr]);
         if (tr.docChanged) {
           query = view.state.doc.toString();
-          const tab = appState.tabs.find((t) => t.id === appState.activeTabId);
-          if (tab && tab.type === "query") {
-            tab.query = query;
-          }
+          tab.data.query = query;
         }
       },
     });
-  });
-
-  onDestroy(() => {
-    view?.destroy();
-  });
+  }
 
   async function runQuery() {
     loading = true;

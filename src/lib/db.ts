@@ -104,3 +104,37 @@ export async function loadConnections(): Promise<SavedConnection[]> {
 export async function deleteConnection(id: string): Promise<void> {
     return await invoke("delete_connection", { id });
 }
+
+// State persistence types
+export interface TabState {
+    type: "data" | "structure" | "query";
+    id: string;
+    title: string;
+    connection_id: string;
+    database: string;
+    table?: string;
+    page?: number;
+    page_size?: number;
+    query?: string;
+}
+
+export interface SpaceState {
+    id: string;
+    config_id: string;
+    current_database: string;
+    active_tab_id?: string;
+    tabs: TabState[];
+}
+
+export interface AppStateData {
+    spaces: SpaceState[];
+    selected_connection_id?: string;
+}
+
+export async function saveAppState(state: AppStateData): Promise<void> {
+    return await invoke("save_app_state", { state });
+}
+
+export async function loadAppState(): Promise<AppStateData | null> {
+    return await invoke("load_app_state");
+}
