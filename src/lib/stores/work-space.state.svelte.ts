@@ -19,14 +19,19 @@ export class WorkSpace {
   #activeTabId: string | null = $state<string | null>(null);
   #status = $state<WorkSpaceStatus>("initial");
 
-  constructor(data: {
-    id: string;
-    config: SavedConnection;
-    databases: string[];
-    tables: string[];
-    currentDatabase: string;
-    activeTabId?: string; // Track the active tab for this connection
-  }) {
+  #changed: () => void | Promise<void>;
+
+  constructor(
+    data: {
+      id: string;
+      config: SavedConnection;
+      databases: string[];
+      tables: string[];
+      currentDatabase: string;
+      activeTabId?: string; // Track the active tab for this connection
+    },
+    changed: () => void | Promise<void>
+  ) {
     this.#id = data.id;
     this.#config = data.config;
     this.#databases = data.databases;
@@ -36,6 +41,8 @@ export class WorkSpace {
     if (data.activeTabId) {
       this.#activeTabId = data.activeTabId;
     }
+
+    this.#changed = changed;
   }
 
   async connect() {
@@ -80,15 +87,6 @@ export class WorkSpace {
 
   async disconnect() {}
 
-  async #save() {
-    // console.log("Saving space state:", {
-    //   databases: this.#databases,
-    //   tables: this.#tables,
-    //   currentDatabase: this.#currentDatabase,
-    //   activeTabId: this.#activeTabId,
-    // });
-  }
-
   get key() {
     return getSpaceKey(this.#config, this.#currentDatabase);
   }
@@ -111,7 +109,7 @@ export class WorkSpace {
 
   set databases(value: string[]) {
     this.#databases = value;
-    this.#save();
+    this.#changed();
   }
 
   get tables() {
@@ -120,7 +118,7 @@ export class WorkSpace {
 
   set tables(value: string[]) {
     this.#tables = value;
-    this.#save();
+    this.#changed();
   }
 
   get currentDatabase() {
@@ -129,7 +127,7 @@ export class WorkSpace {
 
   set currentDatabase(value: string) {
     this.#currentDatabase = value;
-    this.#save();
+    this.#changed();
   }
 
   get activeTabId() {
@@ -138,7 +136,7 @@ export class WorkSpace {
 
   set activeTabId(value: string | null) {
     this.#activeTabId = value;
-    this.#save();
+    this.#changed();
   }
 
   get status() {

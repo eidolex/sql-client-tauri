@@ -3,50 +3,44 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+use crate::connection_manager::SavedConnection;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppStateData {
+    pub selected_space_id: Option<String>,
     pub spaces: Vec<SpaceState>,
-    pub selected_connection_id: Option<String>,
+    pub tabs: Vec<TabState>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SpaceState {
     pub id: String,
-    pub config_id: String, // Reference to saved connection
+    pub config: SavedConnection,
     pub current_database: String,
     pub active_tab_id: Option<String>,
-    pub tabs: Vec<TabState>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum TabState {
-    #[serde(rename = "data")]
-    Data {
-        id: String,
-        title: String,
-        connection_id: String,
-        database: String,
-        table: String,
-        page: i32,
-        page_size: i32,
-    },
-    #[serde(rename = "structure")]
-    Structure {
-        id: String,
-        title: String,
-        connection_id: String,
-        database: String,
-        table: String,
-    },
-    #[serde(rename = "query")]
-    Query {
-        id: String,
-        title: String,
-        connection_id: String,
-        database: String,
-        query: Option<String>,
-    },
+pub struct TabData {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TabState {
+    pub id: String,
+    pub title: String,
+    pub connection_id: String,
+    pub database: String,
+    #[serde(rename = "type")]
+    pub tab_type: String,
+    pub data: TabData,
 }
 
 fn get_state_file_path(app: &AppHandle) -> Result<PathBuf, String> {

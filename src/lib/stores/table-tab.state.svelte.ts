@@ -139,29 +139,23 @@ export class TableTab<T extends TableTabType> {
   #connectionId: string;
   #database: string;
   #type: T = $state<T>("data" as T);
-
   #data: TabDataType<T>;
 
-  constructor(data: TabOptionsType<T>) {
+  #changed: ChangedCallback;
+
+  constructor(data: TabOptionsType<T>, changed: ChangedCallback) {
     this.#id = data.id;
     this.#title = data.title;
     this.#connectionId = data.connectionId;
     this.#database = data.database;
     this.#type = data.type as T;
     if (data.type === "data" || data.type === "structure") {
-      this.#data = new TableDataTab(
-        data.data,
-        this.save.bind(this)
-      ) as TabDataType<T>;
+      this.#data = new TableDataTab(data.data, changed) as TabDataType<T>;
     } else {
-      this.#data = new TableQueryTab(
-        data.data,
-        this.save.bind(this)
-      ) as TabDataType<T>;
+      this.#data = new TableQueryTab(data.data, changed) as TabDataType<T>;
     }
+    this.#changed = changed;
   }
-
-  async save() {}
 
   get id() {
     return this.#id;
@@ -185,7 +179,7 @@ export class TableTab<T extends TableTabType> {
 
   set type(type: Exclude<T, "query">) {
     this.#type = type;
-    this.save();
+    this.#changed();
   }
 
   get data(): TabDataType<T> {
