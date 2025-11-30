@@ -14,7 +14,9 @@
       {
         "title": "sql-tauri",
         "width": 1240,
-        "height": 720
+        "height": 720,
+        "decorations": false,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {
