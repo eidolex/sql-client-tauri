@@ -21,7 +21,7 @@
   const { data }: PageProps = $props();
 
   const space = $derived.by(() => {
-    return appState.spaces.get(data.id)!;
+    return appState.spaces.get(data.id);
   });
 
   const currentConnectionTabs = $derived(
@@ -45,7 +45,7 @@
 
   function handleKeydown(e: KeyboardEvent) {
     // Check for Cmd+W (macOS) or Ctrl+W (Windows/Linux)
-    if (e.key === "w" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === "w" && (e.metaKey || e.ctrlKey) && space) {
       // Only close tab if there's an active tab
 
       e.preventDefault();
@@ -55,7 +55,7 @@
 
   const scrolling: Action<HTMLButtonElement, string> = (node, tabId) => {
     $effect(() => {
-      const scroll = tabId === space.activeTabId;
+      const scroll = tabId === space?.activeTabId;
       if (scroll) {
         node.scrollIntoView({ behavior: "smooth" });
       }
@@ -65,7 +65,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if space.status === "connecting"}
+{#if !space || space.status === "connecting"}
   <div
     class="flex-1 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10"
   >
