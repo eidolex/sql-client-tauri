@@ -15,6 +15,7 @@
   import DataViewer from "./DataViewer.svelte";
   import { TableTab } from "$lib/stores/table-tab.state.svelte";
   import SqlEditor from "./SqlEditor.svelte";
+  import type { Action } from "svelte/action";
 
   const appState = getAppState();
   const { data }: PageProps = $props();
@@ -26,7 +27,7 @@
   const currentConnectionTabs = $derived(
     space
       ? (appState.tabs.filter((t) => t.connectionId === space.id) ?? [])
-      : [],
+      : []
   );
 
   $effect(() => {
@@ -51,6 +52,15 @@
       appState.closeActiveTab(space.id);
     }
   }
+
+  const scrolling: Action<HTMLButtonElement, string> = (node, tabId) => {
+    $effect(() => {
+      const scroll = tabId === space.activeTabId;
+      if (scroll) {
+        node.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  };
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -84,11 +94,12 @@
             {/if}
             {#each currentConnectionTabs as tab (tab.id)}
               <button
+                use:scrolling={tab.id}
                 class={cn(
                   "group px-4 py-2 text-sm font-medium border-r flex items-center gap-2 min-w-[140px] max-w-60 h-10 transition-colors relative",
                   space?.activeTabId === tab.id
                     ? "bg-background text-foreground border-t-2 border-t-primary"
-                    : "bg-muted/10 text-muted-foreground hover:bg-muted/30 border-t-2 border-t-transparent",
+                    : "bg-muted/10 text-muted-foreground hover:bg-muted/30 border-t-2 border-t-transparent"
                 )}
                 onclick={() => {
                   if (space) {
@@ -107,7 +118,7 @@
                 <div
                   class={cn(
                     "opacity-0 group-hover:opacity-100 rounded-sm p-0.5 hover:bg-destructive/10 hover:text-destructive transition-all",
-                    space?.activeTabId === tab.id && "opacity-100",
+                    space?.activeTabId === tab.id && "opacity-100"
                   )}
                   onclick={(e) => closeTab(tab.id, e)}
                   role="button"
