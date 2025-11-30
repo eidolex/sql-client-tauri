@@ -54,7 +54,7 @@ export class AppState {
       (t, i) => t.connectionId === tab.connectionId && i < index
     );
 
-    this.#tabs.splice(index);
+    this.#tabs.splice(index, 1);
 
     if (previousTab) {
       this.#spaces.get(previousTab.connectionId)!.activeTabId = previousTab.id;
