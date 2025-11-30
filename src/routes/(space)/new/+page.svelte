@@ -1,9 +1,9 @@
 <script lang="ts">
   import Button from "$lib/components/ui/button/button.svelte";
   import { Plus } from "lucide-svelte";
-  import SavedConnectionList from "$lib/partials/new/SavedConnectionList.svelte";
   import { setConnectionState } from "$lib/stores/connection.state.svelte";
-  import ConnectionForm from "$lib/partials/new/ConnectionForm.svelte";
+  import ConnectionForm from "./ConnectionForm.svelte";
+  import SavedConnectionList from "./SavedConnectionList.svelte";
 
   const connectionState = setConnectionState();
 </script>

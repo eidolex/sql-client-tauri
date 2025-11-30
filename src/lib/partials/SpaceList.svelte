@@ -8,6 +8,7 @@
   import { disconnectDb } from "$lib/db";
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
+  import type { Action } from "svelte/action";
 
   const appState = getAppState();
 
@@ -36,49 +37,62 @@
       console.error("Failed to disconnect", e);
     }
   }
+
+  const scrolling: Action<HTMLDivElement, string> = (node, spaceId) => {
+    $effect(() => {
+      const scroll = spaceId === paramsId;
+      if (scroll) {
+        node.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  };
 </script>
 
-<ScrollArea class="flex-1 w-full">
-  <div class="flex flex-col items-center gap-3 w-full px-2">
-    {#each appState.spaces.values() as space (space.id)}
-      <ContextMenu.Root>
-        <ContextMenu.Trigger>
-          <Button
-            variant={isSpaceRoute && paramsId === space.id
-              ? "default"
-              : "ghost"}
-            size="icon"
-            class={cn(
-              "w-12 h-12 rounded-xl transition-all duration-200 relative group",
-              isSpaceRoute && paramsId === space.id
-                ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                : "bg-muted/50 hover:bg-muted"
-            )}
-            href={`/${space.id}`}
-            title={space.name}
-          >
-            <span class="font-bold text-sm">
-              {getInitials(space.name)}
-            </span>
+{#if appState.spaces.size > 0}
+  <ScrollArea class="w-full overflow-y-scroll">
+    <div class="flex flex-col items-center gap-3 w-full px-2">
+      {#each appState.spaces.values() as space (space.id)}
+        <div use:scrolling={space.id}>
+          <ContextMenu.Root>
+            <ContextMenu.Trigger>
+              <Button
+                variant={isSpaceRoute && paramsId === space.id
+                  ? "default"
+                  : "ghost"}
+                size="icon"
+                class={cn(
+                  "size-12 rounded-xl transition-all duration-200 relative group",
+                  isSpaceRoute && paramsId === space.id
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-muted/50 hover:bg-muted",
+                )}
+                href={`/${space.id}`}
+                title={`${space.name} (${space.currentDatabase})`}
+              >
+                <span class="font-bold text-sm">
+                  {getInitials(space.name)}
+                </span>
 
-            <!-- Active Indicator -->
-            {#if isSpaceRoute && paramsId === space.id}
-              <div
-                class="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-8 bg-foreground rounded-r-full"
-              ></div>
-            {/if}
-          </Button>
-        </ContextMenu.Trigger>
-        <ContextMenu.Content>
-          <ContextMenu.Item
-            class="text-destructive focus:text-destructive"
-            onclick={() => closeConnection(space.id)}
-          >
-            <LogOut class="mr-2 h-4 w-4" />
-            Close Connection
-          </ContextMenu.Item>
-        </ContextMenu.Content>
-      </ContextMenu.Root>
-    {/each}
-  </div>
-</ScrollArea>
+                <!-- Active Indicator -->
+                {#if isSpaceRoute && paramsId === space.id}
+                  <div
+                    class="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-8 bg-foreground rounded-r-full"
+                  ></div>
+                {/if}
+              </Button>
+            </ContextMenu.Trigger>
+            <ContextMenu.Content>
+              <ContextMenu.Item
+                class="text-destructive focus:text-destructive"
+                onclick={() => closeConnection(space.id)}
+              >
+                <LogOut class="mr-2 h-4 w-4" />
+                Close Connection
+              </ContextMenu.Item>
+            </ContextMenu.Content>
+          </ContextMenu.Root>
+        </div>
+      {/each}
+    </div>
+  </ScrollArea>
+{/if}

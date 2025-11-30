@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { getAppState } from "$lib/stores/state.svelte";
   import { Plus, Sun, Moon } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
-  import { Separator } from "$lib/components/ui/separator";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { cn } from "$lib/utils";
   import { setMode } from "mode-watcher";
@@ -13,12 +11,17 @@
 <div
   class="w-[70px] bg-muted/10 border-r flex flex-col items-center py-4 gap-4 shrink-0"
 >
+  <!-- <Separator class="w-8" /> -->
+
+  <!-- Active Connections -->
+  <SpaceList />
+
   <!-- New Connection / Home -->
   <Button
     variant={page.route.id === "/(space)/new" ? "default" : "ghost"}
     size="icon"
     class={cn(
-      "w-12 h-12 rounded-xl transition-all duration-200",
+      "size-12 rounded-xl transition-all duration-200",
       page.route.id === "/(space)/new"
         ? "bg-primary text-primary-foreground hover:bg-primary/90"
         : "hover:bg-muted",
@@ -28,11 +31,6 @@
   >
     <Plus size={24} />
   </Button>
-
-  <Separator class="w-8" />
-
-  <!-- Active Connections -->
-  <SpaceList />
 
   <div class="mt-auto">
     <DropdownMenu.Root>

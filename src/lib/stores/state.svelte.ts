@@ -81,8 +81,12 @@ export class AppState {
   }
 
   getConnectionId(connection: SavedConnection) {
-    if (this.hasConnection(connection)) {
-      return connection.id;
+    const newKey = getSpaceKey(connection, connection.database);
+
+    for (const space of this.#spaces.values()) {
+      if (space.key === newKey) {
+        return space.id;
+      }
     }
 
     if (!this.#spaces.has(connection.id)) {
