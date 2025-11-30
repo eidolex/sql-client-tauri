@@ -58,6 +58,13 @@ export class AppState {
 
     if (previousTab) {
       this.#spaces.get(previousTab.connectionId)!.activeTabId = previousTab.id;
+    } else {
+      const nextTab = this.#tabs.find(
+        (t, i) => t.connectionId === tab.connectionId && i >= index
+      );
+      if (nextTab) {
+        this.#spaces.get(nextTab.connectionId)!.activeTabId = nextTab.id;
+      }
     }
   }
 
