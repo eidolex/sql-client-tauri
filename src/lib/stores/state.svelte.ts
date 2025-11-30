@@ -176,8 +176,6 @@ export class AppState {
       this.#isSaving = true;
       const state = await loadAppState();
 
-      console.log("Loaded state", state);
-
       if (state) {
         this.selectedSpaceId = state.selected_space_id ?? null;
         state.spaces.forEach((space) => {
@@ -275,7 +273,6 @@ export class AppState {
     };
 
     try {
-      console.log("Saving state", state);
       await saveAppState(state);
     } catch (e) {
       console.error("Failed to save state", e);
