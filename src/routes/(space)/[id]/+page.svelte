@@ -10,6 +10,7 @@
   } from "lucide-svelte";
   import type { PageProps } from "./$types";
   import TableList from "./TableList.svelte";
+  import { ScrollArea } from "$lib/components/ui/scroll-area";
   import StructureViewer from "./StructureViewer.svelte";
   import DataViewer from "./DataViewer.svelte";
   import { TableTab } from "$lib/stores/table-tab.state.svelte";
@@ -25,7 +26,7 @@
   const currentConnectionTabs = $derived(
     space
       ? (appState.tabs.filter((t) => t.connectionId === space.id) ?? [])
-      : []
+      : [],
   );
 
   $effect(() => {
@@ -72,51 +73,53 @@
     <div class="h-full w-full flex flex-col bg-background">
       <!-- Second Level: Tab Bar (Only if a connection is selected) -->
       {#if space}
-        <div class="flex bg-muted/10 border-b overflow-x-auto no-scrollbar">
-          {#if currentConnectionTabs.length === 0}
-            <div
-              class="px-4 py-2 text-sm text-muted-foreground italic flex items-center h-10"
-            >
-              No open tabs
-            </div>
-          {/if}
-          {#each currentConnectionTabs as tab (tab.id)}
-            <button
-              class={cn(
-                "group px-4 py-2 text-sm font-medium border-r flex items-center gap-2 min-w-[140px] max-w-60 h-10 transition-colors relative",
-                space?.activeTabId === tab.id
-                  ? "bg-background text-foreground border-t-2 border-t-primary"
-                  : "bg-muted/10 text-muted-foreground hover:bg-muted/30 border-t-2 border-t-transparent"
-              )}
-              onclick={() => {
-                if (space) {
-                  space.activeTabId = tab.id;
-                }
-              }}
-            >
-              {#if tab.type === "data"}
-                <Database class="h-4 w-4 text-blue-500" />
-              {:else if tab.type === "query"}
-                <Terminal class="h-4 w-4 text-green-500" />
-              {:else if tab.type === "structure"}
-                <TableProperties class="h-4 w-4 text-orange-500" />
-              {/if}
-              <span class="truncate flex-1 text-left">{tab.title}</span>
+        <ScrollArea orientation="horizontal" class="bg-muted/10 border-b">
+          <div class="flex">
+            {#if currentConnectionTabs.length === 0}
               <div
-                class={cn(
-                  "opacity-0 group-hover:opacity-100 rounded-sm p-0.5 hover:bg-destructive/10 hover:text-destructive transition-all",
-                  space?.activeTabId === tab.id && "opacity-100"
-                )}
-                onclick={(e) => closeTab(tab.id, e)}
-                role="button"
-                tabindex="0"
-                onkeydown={(e) => e.key === "Enter" && closeTab(tab.id, e)}
+                class="px-4 py-2 text-sm text-muted-foreground italic flex items-center h-10"
               >
-                <X class="h-3 w-3" />
+                No open tabs
               </div>
-            </button>
-          {/each}
-        </div>
+            {/if}
+            {#each currentConnectionTabs as tab (tab.id)}
+              <button
+                class={cn(
+                  "group px-4 py-2 text-sm font-medium border-r flex items-center gap-2 min-w-[140px] max-w-60 h-10 transition-colors relative",
+                  space?.activeTabId === tab.id
+                    ? "bg-background text-foreground border-t-2 border-t-primary"
+                    : "bg-muted/10 text-muted-foreground hover:bg-muted/30 border-t-2 border-t-transparent",
+                )}
+                onclick={() => {
+                  if (space) {
+                    space.activeTabId = tab.id;
+                  }
+                }}
+              >
+                {#if tab.type === "data"}
+                  <Database class="h-4 w-4 text-blue-500" />
+                {:else if tab.type === "query"}
+                  <Terminal class="h-4 w-4 text-green-500" />
+                {:else if tab.type === "structure"}
+                  <TableProperties class="h-4 w-4 text-orange-500" />
+                {/if}
+                <span class="truncate flex-1 text-left">{tab.title}</span>
+                <div
+                  class={cn(
+                    "opacity-0 group-hover:opacity-100 rounded-sm p-0.5 hover:bg-destructive/10 hover:text-destructive transition-all",
+                    space?.activeTabId === tab.id && "opacity-100",
+                  )}
+                  onclick={(e) => closeTab(tab.id, e)}
+                  role="button"
+                  tabindex="0"
+                  onkeydown={(e) => e.key === "Enter" && closeTab(tab.id, e)}
+                >
+                  <X class="h-3 w-3" />
+                </div>
+              </button>
+            {/each}
+          </div>
+        </ScrollArea>
       {/if}
 
       <!-- Content Area -->
