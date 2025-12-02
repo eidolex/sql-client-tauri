@@ -18,6 +18,7 @@ export class WorkSpace {
   #currentDatabase: string = $state<string>("");
   #activeTabId: string | null = $state<string | null>(null);
   #status = $state<WorkSpaceStatus>("initial");
+  #error = $state<string | null>(null);
 
   #changed: () => void | Promise<void>;
 
@@ -81,6 +82,7 @@ export class WorkSpace {
       this.#status = "connected";
     } catch (error) {
       this.#status = "error";
+      this.#error = (error as Error).message;
       console.error("Failed to connect:", error);
     }
   }
@@ -141,6 +143,10 @@ export class WorkSpace {
 
   get status() {
     return this.#status;
+  }
+
+  get error() {
+    return this.#error;
   }
 }
 

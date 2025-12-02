@@ -16,6 +16,7 @@
   import { TableTab } from "$lib/stores/table-tab.state.svelte";
   import SqlEditor from "./SqlEditor.svelte";
   import type { Action } from "svelte/action";
+  import { toast } from "svelte-sonner";
 
   const appState = getAppState();
   const { data }: PageProps = $props();
@@ -33,6 +34,13 @@
   $effect(() => {
     if (space && space.status === "initial") {
       space.connect();
+    }
+
+    if (space && space.status === "error" && space.error) {
+      toast.error(space.error, {
+        duration: 3000,
+        position: "bottom-right",
+      });
     }
   });
 
